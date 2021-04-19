@@ -116,6 +116,27 @@ class TPareto(RV): # Truncated
 			return None
 		return s
 
+def binary_search(l, target, get_value):
+	r = (l + 1) * 10**3
+	while get_value(r) < target:
+		r *= 10
+	log(DEBUG, "Starting", l=l, r=r)
+
+	while (r - l > 0.01):
+		m = (l + r)/2
+		# log(DEBUG, "", m=m)
+		if get_value(m) < target:
+			l = m
+		else:
+			r = m
+
+	return (l + r)/2
+
+class TPareto_forAGivenMean(TPareto):
+	def __init__(self, l, a, mean):
+		u = binary_search(float(l), mean, lambda u: TPareto(l, u, a).mean())
+		super().__init__(l, u, a)
+
 class DiscreteRV():
 	def __init__(self, p_l, v_l, norm_factor=1):
 		self.p_l = p_l
@@ -125,9 +146,9 @@ class DiscreteRV():
 		self.dist = scipy.stats.rv_discrete(name='discrete', values=(v_l, p_l))
 
 	def __repr__(self):
-		return 'DiscreteRV:\n' + \
-			'\t p_l= {}\n'.format(self.p_l) + \
-			'\t rv_l= {}\n'.format(self.rv_l)
+		return 'DiscreteRV(' + '\n\t' + \
+			'p_l= {}'.format(self.p_l) + '\n\t' + \
+			'v_l= {}'.format(self.v_l) + ')'
 
 	def mean(self):
 		return self.dist.mean() / self.norm_factor
@@ -249,4 +270,4 @@ if __name__ == '__main__':
 	# test_moment()
 	rv = DiscreteRV(p_l=[1], v_l=[0.023])
 	s = rv.sample()
-	log(DEBUG, "", s=s)
+	log(DEBUG, "", s=s, rv=rv)

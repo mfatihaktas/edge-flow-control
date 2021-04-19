@@ -29,6 +29,16 @@ class Client():
 
 		self.job_info_m = {}
 
+	def __repr__(self):
+		return 'Client(' '\n\t' + \
+			'id= {}'.format(self._id) + '\n\t' + \
+      'sid_ip_m= {}'.format(self.sid_ip_m) + '\n\t' + \
+			'num_jobs_to_gen= {}'.format(self.num_jobs_to_gen) + '\n\t' + \
+			'max_delay= {}'.format(self.max_delay) + '\n\t' + \
+			'inter_ar_time_rv= {}'.format(self.inter_ar_time_rv) + '\n\t' + \
+			'serv_time_rv= {}'.format(self.serv_time_rv) + '\n\t' + \
+			'size_inBs_rv= {}'.format(self.size_inBs_rv) + ')'
+
 	def close(self):
 		self.fc_client.close()
 
@@ -127,17 +137,17 @@ def test(argv):
 
 	input("Enter to start...\n")
 
-	avg_serv_time = 0.01
-	mu = float(1/avg_serv_time)
+	ES = 0.01
+	mu = float(1/ES)
 	ar = 0.9*mu
 	c = Client(_id, sid_ip_m={'s0': '10.0.1.0'},
 						 num_jobs_to_gen=1000, max_delay=0.05,
 						 inter_ar_time_rv=Exp(ar), # DiscreteRV(p_l=[1], v_l=[0.5]),
-						 serv_time_rv=Exp(mu), # DiscreteRV(p_l=[1], v_l=[avg_serv_time])
+						 serv_time_rv=TPareto_forAGivenMean(l=ES/2, a=1, mean=ES), # Exp(mu), # DiscreteRV(p_l=[1], v_l=[ES])
 						 size_inBs_rv=DiscreteRV(p_l=[1], v_l=[1]))
 
 	input("Enter to summarize job info...\n")
-	# log(DEBUG, "", job_info_m=ec.job_info_m)
+	log(DEBUG, "", client=c)
 	c.summarize_job_info()
 
 	input("Enter to finish...\n")
