@@ -9,14 +9,13 @@ class AIMDController():
 		self.q_len = 0
 		self.q_len_max = 2
 		self.avg_delay = 0
-		self.a = 0.9
+		self.a = 0.5
 
 	def update(self, t): # t: turnaround_time
 		self.q_len = max(0, self.q_len - 1)
 
 		self.avg_delay = (1 - self.a)*self.avg_delay + self.a*t
-		if self.avg_delay > 0.8*self.max_delay:
-			# self.q_len_limit = max(1, self.q_len_limit*1/2)
+		if self.avg_delay > self.max_delay:
 			self.q_len_limit = int(self.q_len_limit*1/2)
 			log(WARNING, "reduced q_len_limit; id= {}".format(self._id))
 		else:

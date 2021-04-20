@@ -16,6 +16,7 @@ class Server():
 		self.is_waiting_for_ajob = False
 		t = threading.Thread(target=self.run, daemon=True)
 		t.start()
+		t.join()
 
 	def handle_msg(self, msg):
 		log(DEBUG, "handling", msg=msg)
@@ -76,8 +77,8 @@ def test(argv):
 	log_to_file('{}.log'.format(_id))
 
 	s = Server(_id)
-	input("Enter to finish...\n")
-	sys.exit()
+	# input("Enter to finish...\n")
+	# sys.exit()
 
 if __name__ == '__main__':
 	test(sys.argv[1:])

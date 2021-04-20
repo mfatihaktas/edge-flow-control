@@ -28,6 +28,7 @@ class Client():
 		t.start()
 
 		self.job_info_m = {}
+		t.join()
 
 	def __repr__(self):
 		return 'Client(' '\n\t' + \
@@ -77,6 +78,7 @@ class Client():
 				self.job_info_m[job].update({'fate': 'dropped'})
 
 			if self.num_jobs_gened == self.num_jobs_to_gen:
+				self.close()
 				return
 
 	def summarize_job_info(self):
@@ -101,6 +103,7 @@ class Client():
 		ax = plot.gca()
 		for sid, T_l in sid__T_l_m.items():
 			add_cdf(T_l, ax, sid, next(nice_color), drawline_x_l=[1000*self.max_delay])
+		plot.xscale('log')
 
 		fontsize = 14
 		plot.ylabel('CDF', fontsize=fontsize)
@@ -114,6 +117,7 @@ class Client():
 		plot.gcf().set_size_inches(6, 4)
 		plot.savefig("plot_cdf_T_{}.png".format(self._id), bbox_inches='tight')
 		plot.gcf().clear()
+		log(DEBUG, "done.")
 
 def parse_argv(argv):
 	i = None
@@ -135,22 +139,24 @@ def test(argv):
 	_id = 'c' + parse_argv(argv)
 	log_to_file('{}.log'.format(_id))
 
-	input("Enter to start...\n")
+	# input("Enter to start...\n")
 
 	ES = 0.01
 	mu = float(1/ES)
-	ar = 0.9*mu
+	ar = 0.3*mu
 	c = Client(_id, sid_ip_m={'s0': '10.0.1.0'},
 						 num_jobs_to_gen=1000, max_delay=0.05,
 						 inter_ar_time_rv=Exp(ar), # DiscreteRV(p_l=[1], v_l=[0.5]),
-						 serv_time_rv=TPareto_forAGivenMean(l=ES/2, a=1, mean=ES), # Exp(mu), # DiscreteRV(p_l=[1], v_l=[ES])
+						 serv_time_rv=Exp(mu), # DiscreteRV(p_l=[1], v_l=[ES*1000], norm_factor=1000), # TPareto_forAGivenMean(l=ES/2, a=1, mean=ES)
 						 size_inBs_rv=DiscreteRV(p_l=[1], v_l=[1]))
 
-	input("Enter to summarize job info...\n")
+	# input("Enter to summarize job info...\n")
+	time.sleep(3)
 	log(DEBUG, "", client=c)
 	c.summarize_job_info()
 
-	input("Enter to finish...\n")
+	# input("Enter to finish...\n")
+	time.sleep(100000)
 	c.close()
 	sys.exit()
 

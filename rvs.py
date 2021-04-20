@@ -148,7 +148,8 @@ class DiscreteRV():
 	def __repr__(self):
 		return 'DiscreteRV(' + '\n\t' + \
 			'p_l= {}'.format(self.p_l) + '\n\t' + \
-			'v_l= {}'.format(self.v_l) + ')'
+			'v_l= {}'.format(self.v_l) + '\n\t' + \
+			'norm_factor= {}'.format(self.norm_factor) + ')'
 
 	def mean(self):
 		return self.dist.mean() / self.norm_factor
