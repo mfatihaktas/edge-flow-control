@@ -28,6 +28,8 @@ class Client():
 		t.start()
 
 		self.job_info_m = {}
+		self.inter_result_time_l = []
+		self.last_time_result_recved = time.time()
 		t.join()
 
 	def __repr__(self):
@@ -46,20 +48,27 @@ class Client():
 	def handle_msg(self, msg):
 		log(DEBUG, "handling", msg=msg)
 
-		result = msg.payload
-		check(result.is_result(), "Msg should contain a result.")
+		payload = msg.payload
+		check(payload.is_result() or payload.is_probe(), "Msg should contain a result or probe.")
 
 		sid = msg.src_id
-		info = self.job_info_m[result]
-		t = time.time() - info['enter_time']
-		info.update(
-			{
-				'fate': 'finished',
-				'sid': sid,
-				'T': 1000*t
-			})
+		if payload.is_result():
+			info = self.job_info_m[payload]
+			t = time.time() - info['enter_time']
+			info.update(
+				{
+					'fate': 'finished',
+					'sid': sid,
+					'T': 1000*t
+				})
 
-		self.fc_client.update_delay_controller(sid, t)
+			self.fc_client.update_delay_controller(sid, t)
+
+			t = time.time()
+			self.inter_result_time_l.append(1000*(t - self.last_time_result_recved))
+			self.last_time_result_recved = t
+		elif payload.is_probe():
+			self.fc_client.handle_probe(sid, payload)
 
 	def run(self):
 		while True:
@@ -100,15 +109,14 @@ class Client():
 
 				sid__T_l_m[info['sid']].append(T)
 
+		fontsize = 14
+		# CDF of job turnaround times
 		ax = plot.gca()
 		for sid, T_l in sid__T_l_m.items():
 			add_cdf(T_l, ax, sid, next(nice_color), drawline_x_l=[1000*self.max_delay])
 		plot.xscale('log')
-
-		fontsize = 14
 		plot.ylabel('CDF', fontsize=fontsize)
 		plot.xlabel('Turnaround time (msec)', fontsize=fontsize)
-
 		num_total = len(T_l) + num_dropped
 		f_dropped = round(num_dropped / num_total, 2)
 		log(DEBUG, "", f_dropped=f_dropped)
@@ -117,6 +125,17 @@ class Client():
 		plot.gcf().set_size_inches(6, 4)
 		plot.savefig("plot_cdf_T_{}.png".format(self._id), bbox_inches='tight')
 		plot.gcf().clear()
+
+		# CDF of inter result times
+		ax = plot.gca()
+		add_cdf(self.inter_result_time_l, ax, '', next(nice_color), drawline_x_l=[1000*self.inter_ar_time_rv.mean()])
+		plot.xscale('log')
+		plot.ylabel('CDF', fontsize=fontsize)
+		plot.xlabel('Inter result arrival time (msec)', fontsize=fontsize)
+		plot.legend(fontsize=fontsize)
+		plot.gcf().set_size_inches(6, 4)
+		plot.savefig("plot_cdf_interResultTime_{}.png".format(self._id), bbox_inches='tight')
+
 		log(DEBUG, "done.")
 
 def parse_argv(argv):
@@ -141,12 +160,12 @@ def test(argv):
 
 	# input("Enter to start...\n")
 
-	ES = 0.01
+	ES = 0.5 # 0.01
 	mu = float(1/ES)
-	ar = 0.3*mu
+	ar = 0.1*mu
 	c = Client(_id, sid_ip_m={'s0': '10.0.1.0'},
-						 num_jobs_to_gen=1000, max_delay=0.05,
-						 inter_ar_time_rv=Exp(ar), # DiscreteRV(p_l=[1], v_l=[0.5]),
+						 num_jobs_to_gen=100, max_delay=2*ES, # 0.05, # 0.1, # 0.2, # 0.05
+						 inter_ar_time_rv=Exp(ar), # DiscreteRV(p_l=[1], v_l=[1/ar*1000], norm_factor=1000),
 						 serv_time_rv=Exp(mu), # DiscreteRV(p_l=[1], v_l=[ES*1000], norm_factor=1000), # TPareto_forAGivenMean(l=ES/2, a=1, mean=ES)
 						 size_inBs_rv=DiscreteRV(p_l=[1], v_l=[1]))
 

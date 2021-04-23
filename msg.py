@@ -34,11 +34,11 @@ class Payload():
 	def is_job(self):
 		return self.typ == 'j'
 
-	def is_probe(self):
-		return self.typ == 'p'
-
 	def is_result(self):
 		return self.typ == 'r'
+
+	def is_probe(self):
+		return self.typ == 'p'
 
 class Job(Payload):
 	def __init__(self, _id, cid, serv_time, size_inBs):
@@ -54,6 +54,13 @@ class Result(Payload):
 
 	def __repr__(self):
 		return "Result(id= {}, cid= {}, size_inBs= {})".format(self._id, self.cid, self.size_inBs)
+
+class Probe(Payload):
+	def __init__(self, _id, cid):
+		super().__init__(_id, cid, typ='p', size_inBs=0)
+
+	def __repr__(self):
+		return "Probe(id= {}, cid= {}, size_inBs= {})".format(self._id, self.cid, self.size_inBs)
 
 def result_from_job(job):
 	return Result(job._id, job.cid)

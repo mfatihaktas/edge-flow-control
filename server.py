@@ -25,7 +25,7 @@ class Server():
 		self.fc_server.reg(cid)
 
 		payload = msg.payload
-		check(payload.is_job(), "Msg should contain a job.")
+		check(payload.is_job() or payload.is_probe(), "Msg should contain a job or probe.")
 		self.put(payload)
 
 	def put(self, job):
@@ -49,11 +49,15 @@ class Server():
 					self.is_waiting_for_ajob = False
 				continue
 
-			log(DEBUG, "will serv", job=job)
-			time.sleep(job.serv_time)
-			log(DEBUG, "finished serving", job=job)
+			if job.is_job():
+				log(DEBUG, "will serv", job=job)
+				time.sleep(job.serv_time)
+				log(DEBUG, "finished serving", job=job)
 
-			msg = Msg(job._id, payload=result_from_job(job), dst_id=job.cid)
+				msg = Msg(job._id, payload=result_from_job(job), dst_id=job.cid)
+			elif job.is_probe():
+				msg = Msg(job._id, payload=job, dst_id=job.cid) # return the probe back to the client
+
 			self.tcp_client.send(msg)
 
 def parse_argv(argv):

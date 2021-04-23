@@ -97,7 +97,7 @@ if __name__ == '__main__':
   # run_tnodes([t11, t21, t31])
 	run_servers([s0])
 	time.sleep(1)
-	# run_clients([c0])
+	run_clients([c0])
 	# run_clients([c0, c1])
 	run_clients([c0, c1, c2, c3, c4, c5])
 
