@@ -6,6 +6,8 @@ from rvs import *
 from tcp import *
 from flow_control import *
 
+#
+
 class Client():
 	def __init__(self, _id, sid_ip_m,
 							 num_jobs_to_finish, max_delay,
