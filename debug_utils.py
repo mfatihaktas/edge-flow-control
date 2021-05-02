@@ -1,5 +1,7 @@
 import inspect, pprint, logging, os
 
+from config import *
+
 # #################################  Log  ################################# #
 DEBUG = 0
 INFO = 1
@@ -17,9 +19,10 @@ FORMAT = '%(levelname)s] %(func_name)s: %(msg)s'
 # logger.basicConfig(format=FORMAT, level=logging.DEBUG) # filename='c.log'
 formatter = logging.Formatter(FORMAT)
 
-# sh = logging.StreamHandler()
-# sh.setFormatter(formatter)
-# logger.addHandler(sh)
+if TEST:
+	sh = logging.StreamHandler()
+	sh.setFormatter(formatter)
+	logger.addHandler(sh)
 
 level_log_m = {INFO: logger.info, DEBUG: logger.debug, WARNING: logger.warning, ERROR: logger.error, CRITICAL: logger.critical}
 
@@ -32,8 +35,6 @@ def log_to_file(filename):
 	fh.setLevel(logging.DEBUG)
 	fh.setFormatter(formatter)
 	logger.addHandler(fh)
-
-# conf_logger('e{}.log'.format(-1))
 
 def get_extra():
 	# caller_list = []

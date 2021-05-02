@@ -5,6 +5,8 @@ PY=python3
 
 if [ $1 = 'n' ]; then
   $PY net.py
+elif [ $1 = 'nt' ]; then
+  $PY net_test.py
 elif [ $1 = 'c' ]; then
   [ -z "$2" ] && { echo "Which client [0, *] ?"; exit 1; }
   $PY -u client.py --i=$2

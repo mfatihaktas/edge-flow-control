@@ -1,5 +1,6 @@
 import threading, time, sys, getopt
 
+from config import *
 from tcp import *
 from flow_control import *
 
@@ -76,7 +77,7 @@ def parse_argv(argv):
 	check(i is not None, "i is not set.")
 	return i
 
-def test(argv):
+def run(argv):
 	_id = 's' + parse_argv(argv)
 	log_to_file('{}.log'.format(_id))
 
@@ -84,5 +85,16 @@ def test(argv):
 	# input("Enter to finish...\n")
 	# sys.exit()
 
+def test(argv):
+	_id = 's' + parse_argv(argv)
+	log_to_file('{}.log'.format(_id))
+
+	s = Server(_id)
+	input("Enter to finish...\n")
+	sys.exit()
+
 if __name__ == '__main__':
-	test(sys.argv[1:])
+	if TEST:
+		test(sys.argv[1:])
+	else:
+		run(sys.argv[1:])

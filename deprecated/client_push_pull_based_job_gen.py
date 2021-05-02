@@ -8,28 +8,24 @@ from flow_control import *
 
 class Client():
 	def __init__(self, _id, sid_ip_m,
-							 num_jobs_to_finish, max_delay,
-							 on_time_rv, inter_job_gen_time_rv, off_time_rv, serv_time_rv, size_inBs_rv):
+							 num_jobs_to_gen, max_delay,
+							 inter_ar_time_rv, serv_time_rv, size_inBs_rv):
 		self._id = _id
 		self.sid_ip_m = sid_ip_m
-		self.num_jobs_to_finish = num_jobs_to_finish
+		self.num_jobs_to_gen = num_jobs_to_gen
 		self.max_delay = max_delay
-		self.on_time_rv = on_time_rv
-		self.inter_job_gen_time_rv = inter_job_gen_time_rv
-		self.off_time_rv = off_time_rv
+		self.inter_ar_time_rv = inter_ar_time_rv
 		self.serv_time_rv = serv_time_rv
 		self.size_inBs_rv = size_inBs_rv
 
 		self.tcp_server = TCPServer(_id, self.handle_msg)
 
-		self.fc_client = FlowControlClient(_id, max_delay)
+		self.fc_client = FlowControlClient(_id, max_delay, self.gen_job)
 		for sid, sip in sid_ip_m.items():
 			self.fc_client.reg(sid, sip)
 
 		self.num_jobs_gened = 0
-		self.num_jobs_finished = 0
-		self.inter_job_gen_event = threading.Event()
-		self.is_on = False
+		self.wait_for_gen_job_cmd = threading.Condition()
 		t = threading.Thread(target=self.run, daemon=True)
 		t.start()
 
@@ -42,11 +38,9 @@ class Client():
 		return 'Client(' '\n\t' + \
 			'id= {}'.format(self._id) + '\n\t' + \
       'sid_ip_m= {}'.format(self.sid_ip_m) + '\n\t' + \
-			'num_jobs_to_finish= {}'.format(self.num_jobs_to_finish) + '\n\t' + \
+			'num_jobs_to_gen= {}'.format(self.num_jobs_to_gen) + '\n\t' + \
 			'max_delay= {}'.format(self.max_delay) + '\n\t' + \
-			'on_time_rv= {}'.format(self.on_time_rv) + '\n\t' + \
-			'inter_job_gen_time_rv= {}'.format(self.inter_job_gen_time_rv) + '\n\t' + \
-			'off_time_rv= {}'.format(self.off_time_rv) + '\n\t' + \
+			'inter_ar_time_rv= {}'.format(self.inter_ar_time_rv) + '\n\t' + \
 			'serv_time_rv= {}'.format(self.serv_time_rv) + '\n\t' + \
 			'size_inBs_rv= {}'.format(self.size_inBs_rv) + ')'
 
@@ -75,20 +69,17 @@ class Client():
 			t = time.time()
 			self.inter_result_time_l.append(1000*(t - self.last_time_result_recved))
 			self.last_time_result_recved = t
-
-			self.num_jobs_finished += 1
-			log(DEBUG, "", num_jobs_finished=self.num_jobs_finished)
 		elif payload.is_probe():
 			self.fc_client.handle_probe(sid, payload)
 
-	def gen_jobs(self):
-		log(DEBUG, "started;")
-		while self.is_on:
-			inter_job_gen_time = self.inter_job_gen_time_rv.sample()
-			log(DEBUG, "", inter_job_gen_time=inter_job_gen_time)
-			time.sleep(inter_job_gen_time)
+	"""
+	# Push based job gen
+	def run(self):
+		while True:
+			inter_ar_time = self.inter_ar_time_rv.sample() # random.expovariate(self.rate)
+			log(DEBUG, "sleeping ...", inter_ar_time=inter_ar_time)
+			time.sleep(inter_ar_time)
 
-			self.inter_job_gen_event.wait(timeout=inter_job_gen_time)
 			self.num_jobs_gened += 1
 			job = Job(_id = self.num_jobs_gened,
 								cid = self._id,
@@ -96,39 +87,52 @@ class Client():
 								size_inBs = int(self.size_inBs_rv.sample()))
 			self.job_info_m[job] = {'enter_time': time.time()}
 
-			self.fc_client.put_job(job)
+			if self.fc_client.push(job) == False:
+				self.job_info_m[job].update({'fate': 'dropped'})
 
-			if self.num_jobs_finished >= self.num_jobs_to_finish:
-				break
-		log(DEBUG, "done.")
+			if self.num_jobs_gened == self.num_jobs_to_gen:
+				self.close()
+				return
+	"""
 
+	def gen_job(self):
+		log(DEBUG, "recved gen job cmd ...")
+		with self.wait_for_gen_job_cmd:
+			self.wait_for_gen_job_cmd.notifyAll()
+
+	# Pull based job gen
 	def run(self):
 		while True:
-			off_time = self.off_time_rv.sample()
-			log(DEBUG, "off...", off_time=off_time)
-			time.sleep(off_time)
+			if self.num_jobs_gened > 0:
+				with self.wait_for_gen_job_cmd:
+					log(DEBUG, "waiting for a job")
+					self.wait_for_gen_job_cmd.wait()
 
-			on_time = self.on_time_rv.sample()
-			log(DEBUG, "on!", on_time=on_time)
-			self.is_on = True
-			t = threading.Thread(target=self.gen_jobs, daemon=True)
-			t.start()
-			time.sleep(on_time)
-			self.is_on = False
-			self.inter_job_gen_event.set()
+			self.num_jobs_gened += 1
+			job = Job(_id = self.num_jobs_gened,
+								cid = self._id,
+								serv_time = self.serv_time_rv.sample(),
+								size_inBs = int(self.size_inBs_rv.sample()))
+			self.job_info_m[job] = {'enter_time': time.time()}
 
-			if self.num_jobs_finished >= self.num_jobs_to_finish:
+			check(self.fc_client.push(job) == True, "Got a job gen cmd but fc_client was not able to push the job.")
+
+			if self.num_jobs_gened == self.num_jobs_to_gen:
 				self.close()
-				break
+				return
 
 	def summarize_job_info(self):
+		num_dropped = 0
+
 		sid__T_l_m = {sid: [] for sid in self.sid_ip_m}
 		for job, info in self.job_info_m.items():
 			if 'fate' not in info:
 				continue
 
 			fate = info['fate']
-			if fate == 'finished':
+			if fate == 'dropped':
+				num_dropped += 1
+			elif fate == 'finished':
 				T = info['T']
 				if T < 0:
 					log(WARNING, "Negative turnaround time", job=job, T=T)
@@ -144,7 +148,10 @@ class Client():
 		plot.xscale('log')
 		plot.ylabel('CDF', fontsize=fontsize)
 		plot.xlabel('Turnaround time (msec)', fontsize=fontsize)
-		# plot.title('f_dropped= {}'.format(f_dropped), fontsize=fontsize)
+		num_total = len(T_l) + num_dropped
+		f_dropped = round(num_dropped / num_total, 2)
+		log(DEBUG, "", f_dropped=f_dropped)
+		plot.title('f_dropped= {}'.format(f_dropped), fontsize=fontsize)
 		plot.legend(fontsize=fontsize)
 		plot.gcf().set_size_inches(6, 4)
 		plot.savefig("plot_cdf_T_{}.png".format(self._id), bbox_inches='tight')
@@ -152,7 +159,7 @@ class Client():
 
 		# CDF of inter result times
 		ax = plot.gca()
-		add_cdf(self.inter_result_time_l, ax, '', next(nice_color), drawline_x_l=[1000*self.inter_job_gen_time_rv.mean()])
+		add_cdf(self.inter_result_time_l, ax, '', next(nice_color), drawline_x_l=[1000*self.inter_ar_time_rv.mean()])
 		plot.xscale('log')
 		plot.ylabel('CDF', fontsize=fontsize)
 		plot.xlabel('Inter result arrival time (msec)', fontsize=fontsize)
@@ -186,10 +193,8 @@ def run(argv):
 	mu = float(1/ES)
 	ar = 0.1*mu
 	c = Client(_id, sid_ip_m={'s0': '10.0.1.0'},
-						 num_jobs_to_finish=100, max_delay=2*ES, # 0.05, # 0.1, # 0.2, # 0.05
-						 on_time_rv=DiscreteRV(p_l=[1], v_l=[10]),
-						 inter_job_gen_time_rv=Exp(ar), # DiscreteRV(p_l=[1], v_l=[1/ar*1000], norm_factor=1000),
-						 off_time_rv=DiscreteRV(p_l=[1], v_l=[10]),
+						 num_jobs_to_gen=100, max_delay=2*ES, # 0.05, # 0.1, # 0.2, # 0.05
+						 inter_ar_time_rv=Exp(ar), # DiscreteRV(p_l=[1], v_l=[1/ar*1000], norm_factor=1000),
 						 serv_time_rv=Exp(mu), # DiscreteRV(p_l=[1], v_l=[ES*1000], norm_factor=1000), # TPareto_forAGivenMean(l=ES/2, a=1, mean=ES)
 						 size_inBs_rv=DiscreteRV(p_l=[1], v_l=[1]))
 
@@ -208,12 +213,10 @@ def test(argv):
 	# input("Enter to start...\n")
 	ES = 0.2 # 0.01
 	mu = float(1/ES)
-	ar = 0.1*mu
+	ar = 0.5*mu
 	c = Client(_id, sid_ip_m={'s0': '10.0.1.0'},
-						 num_jobs_to_finish=100, max_delay=2*ES, # 0.05, # 0.1, # 0.2, # 0.05
-						 on_time_rv=DiscreteRV(p_l=[1], v_l=[10]),
-						 inter_job_gen_time_rv=Exp(ar), # DiscreteRV(p_l=[1], v_l=[1/ar*1000], norm_factor=1000),
-						 off_time_rv=DiscreteRV(p_l=[1], v_l=[2]),
+						 num_jobs_to_gen=100, max_delay=2*ES, # 0.05, # 0.1, # 0.2, # 0.05
+						 inter_ar_time_rv=Exp(ar), # DiscreteRV(p_l=[1], v_l=[1/ar*1000], norm_factor=1000),
 						 serv_time_rv=DiscreteRV(p_l=[1], v_l=[ES*1000], norm_factor=1000), # Exp(mu), # TPareto_forAGivenMean(l=ES/2, a=1, mean=ES)
 						 size_inBs_rv=DiscreteRV(p_l=[1], v_l=[1]))
 
