@@ -72,11 +72,11 @@ class InterJobGenTimeController():
 	def run(self):
 		while self.on:
 			if self.inter_serv_time is None:
+				# time.sleep(1)
 				time.sleep(0.1)
-				# time.sleep(2)
 			else:
-				time.sleep(self.inter_serv_time)
 				# time.sleep(2)
+				time.sleep(self.inter_serv_time)
 				self.put()
 
 	def update_w_result(self, job_serv_time):

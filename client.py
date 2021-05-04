@@ -100,7 +100,7 @@ class Client():
 		log(DEBUG, "",
 				turnaround_time=(t - payload.gen_epoch),
 				time_from_c_to_s=(payload.reached_server_epoch - payload.gen_epoch),
-				time_time_from_s_to_c=(t - payload.departed_server_epoch),
+				time_from_s_to_c=(t - payload.departed_server_epoch),
 				result=payload)
 
 		# self.fc_client.update_delay_controller(sid, t)
@@ -157,6 +157,7 @@ class Client():
 		ax = plot.gca()
 		for sid, T_l in sid__T_l_m.items():
 			add_cdf(T_l, ax, sid, next(nice_color)) # drawline_x_l=[1000*self.max_delay]
+		plot.xticks(rotation=70)
 		plot.xscale('log')
 		plot.ylabel('CDF', fontsize=fontsize)
 		plot.xlabel('Turnaround time (msec)', fontsize=fontsize)
@@ -169,6 +170,7 @@ class Client():
 		# CDF of inter result times
 		ax = plot.gca()
 		add_cdf(self.inter_result_time_l, ax, '', next(nice_color)) # drawline_x_l=[1000*self.inter_job_gen_time_rv.mean()]
+		plot.xticks(rotation=70)
 		plot.xscale('log')
 		plot.ylabel('CDF', fontsize=fontsize)
 		plot.xlabel('Inter result arrival time (msec)', fontsize=fontsize)
