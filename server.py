@@ -29,9 +29,11 @@ class Server():
 		check(payload.is_job() or payload.is_probe(), "Msg should contain a job or probe.")
 		self.put(payload)
 
+	# TODO: Move from condition to blocking queue
 	def put(self, job):
 		log(DEBUG, "recved", job=job)
 
+		job.reached_server_epoch = time.time()
 		if self.fc_server.push(job):
 			if self.is_waiting_for_ajob:
 				with self.wait_for_ajob:
@@ -55,7 +57,10 @@ class Server():
 				time.sleep(job.serv_time)
 				log(DEBUG, "finished serving", job=job)
 
-				msg = Msg(job._id, payload=result_from_job(job), dst_id=job.cid)
+				result = result_from_job(job)
+				result.serv_time = time.time() - job.reached_server_epoch
+				result.departed_server_epoch = time.time()
+				msg = Msg(job._id, payload=result, dst_id=job.cid)
 			elif job.is_probe():
 				msg = Msg(job._id, payload=job, dst_id=job.cid) # return the probe back to the client
 

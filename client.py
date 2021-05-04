@@ -6,52 +6,81 @@ from rvs import *
 from tcp import *
 from flow_control import *
 
+# def send_probe(self, sid):
+# 	probe = Probe(_id=num_probes_sent, cid=self._id)
+# 	msg = Msg(_id=self.num_probes_sent, payload=probe, dst_id=sid)
+# 	self.tcp_client.send(msg)
+
+# 	self.probe_info_m[probe] = {'sent_time': time.time()}
+
+# 	self.num_probes_sent += 1
+# 	log(DEBUG, "sent", probe=probe)
+
+# def handle_probe(self, sid, probe):
+# 	check(probe in self.probe_info_m, "Probe has not been entered probe_info_m.")
+# 	log(DEBUG, "handling", sid=sid, probe=probe)
+# 	info = self.probe_info_m[probe]
+# 	t = time.time() - info['sent_time']
+# 	info.update(
+# 		{
+# 			'fate': 'returned',
+# 			'sid': sid,
+# 			'T': 1000*t
+# 		})
+
+# 	self.sid__delay_controller_m[sid].update_w_probe(t)
+# 	self.probe_on_air = False
+
 class Client():
 	def __init__(self, _id, sid_ip_m,
-							 num_jobs_to_finish, max_delay,
-							 on_time_rv, inter_job_gen_time_rv, off_time_rv, serv_time_rv, size_inBs_rv):
+							 num_jobs_to_finish,
+							 serv_time_rv, size_inBs_rv):
 		self._id = _id
 		self.sid_ip_m = sid_ip_m
 		self.num_jobs_to_finish = num_jobs_to_finish
-		self.max_delay = max_delay
-		self.on_time_rv = on_time_rv
-		self.inter_job_gen_time_rv = inter_job_gen_time_rv
-		self.off_time_rv = off_time_rv
 		self.serv_time_rv = serv_time_rv
 		self.size_inBs_rv = size_inBs_rv
 
+		self.tcp_client = TCPClient(_id)
 		self.tcp_server = TCPServer(_id, self.handle_msg)
 
-		self.fc_client = FlowControlClient(_id, max_delay)
+		self.sid_q = queue.Queue()
+		self.fc_client = FlowControlClient(_id, self.sid_q)
 		for sid, sip in sid_ip_m.items():
+			self.tcp_client.reg(sid, sip)
 			self.fc_client.reg(sid, sip)
 
 		self.num_jobs_gened = 0
 		self.num_jobs_finished = 0
-		self.inter_job_gen_event = threading.Event()
-		self.is_on = False
-		t = threading.Thread(target=self.run, daemon=True)
-		t.start()
 
 		self.job_info_m = {}
-		self.inter_result_time_l = []
 		self.last_time_result_recved = time.time()
+		self.inter_result_time_l = []
+
+		self.on = True
+		t = threading.Thread(target=self.run, daemon=True)
+		t.start()
 		t.join()
 
 	def __repr__(self):
-		return 'Client(' '\n\t' + \
+		return 'Client(' + '\n\t' + \
 			'id= {}'.format(self._id) + '\n\t' + \
       'sid_ip_m= {}'.format(self.sid_ip_m) + '\n\t' + \
 			'num_jobs_to_finish= {}'.format(self.num_jobs_to_finish) + '\n\t' + \
-			'max_delay= {}'.format(self.max_delay) + '\n\t' + \
-			'on_time_rv= {}'.format(self.on_time_rv) + '\n\t' + \
-			'inter_job_gen_time_rv= {}'.format(self.inter_job_gen_time_rv) + '\n\t' + \
-			'off_time_rv= {}'.format(self.off_time_rv) + '\n\t' + \
 			'serv_time_rv= {}'.format(self.serv_time_rv) + '\n\t' + \
 			'size_inBs_rv= {}'.format(self.size_inBs_rv) + ')'
 
 	def close(self):
+		if not self.on:
+			return
+
+		log(DEBUG, "started;")
+		self.on = False
+		self.sid_q.put(-1)
+
+		self.tcp_client.close()
 		self.fc_client.close()
+		log(DEBUG, "done.")
 
 	def handle_msg(self, msg):
 		log(DEBUG, "handling", msg=msg)
@@ -60,66 +89,53 @@ class Client():
 		check(payload.is_result() or payload.is_probe(), "Msg should contain a result or probe.")
 
 		sid = msg.src_id
-		if payload.is_result():
-			info = self.job_info_m[payload]
-			t = time.time() - info['enter_time']
-			info.update(
-				{
-					'fate': 'finished',
-					'sid': sid,
-					'T': 1000*t
-				})
+		t = time.time()
 
-			self.fc_client.update_delay_controller(sid, t)
+		self.job_info_m[payload].update(
+			{
+				'fate': 'finished',
+				'sid': sid,
+				'T': 1000*(t - payload.gen_epoch)
+			})
+		log(DEBUG, "",
+				turnaround_time=(t - payload.gen_epoch),
+				time_from_c_to_s=(payload.reached_server_epoch - payload.gen_epoch),
+				time_time_from_s_to_c=(t - payload.departed_server_epoch),
+				result=payload)
 
-			t = time.time()
-			self.inter_result_time_l.append(1000*(t - self.last_time_result_recved))
-			self.last_time_result_recved = t
+		# self.fc_client.update_delay_controller(sid, t)
+		self.fc_client.update_delay_controller(sid, payload.serv_time)
 
-			self.num_jobs_finished += 1
-			log(DEBUG, "", num_jobs_finished=self.num_jobs_finished)
-		elif payload.is_probe():
-			self.fc_client.handle_probe(sid, payload)
+		inter_result_time = 1000*(t - self.last_time_result_recved)
+		log(DEBUG, "", inter_result_time=inter_result_time, job_serv_time=payload.serv_time)
+		self.inter_result_time_l.append(inter_result_time)
+		self.last_time_result_recved = t
 
-	def gen_jobs(self):
-		log(DEBUG, "started;")
-		while self.is_on:
-			inter_job_gen_time = self.inter_job_gen_time_rv.sample()
-			log(DEBUG, "", inter_job_gen_time=inter_job_gen_time)
-			time.sleep(inter_job_gen_time)
+		self.num_jobs_finished += 1
+		log(DEBUG, "", num_jobs_gened=self.num_jobs_gened, num_jobs_finished=self.num_jobs_finished)
 
-			self.inter_job_gen_event.wait(timeout=inter_job_gen_time)
+		if self.num_jobs_finished >= self.num_jobs_to_finish:
+			self.close()
+
+	def run(self):
+		while self.on:
+			sid = self.sid_q.get(block=True)
+			if sid == -1:
+				log(DEBUG, "Recved close signal.")
+				return
+
 			self.num_jobs_gened += 1
 			job = Job(_id = self.num_jobs_gened,
 								cid = self._id,
 								serv_time = self.serv_time_rv.sample(),
 								size_inBs = int(self.size_inBs_rv.sample()))
-			self.job_info_m[job] = {'enter_time': time.time()}
+			job.gen_epoch = time.time()
+			self.job_info_m[job] = {}
 
-			self.fc_client.put_job(job)
-
-			if self.num_jobs_finished >= self.num_jobs_to_finish:
-				break
+			msg = Msg(_id=self.num_jobs_gened, payload=job, dst_id=sid)
+			self.tcp_client.send(msg)
+			log(DEBUG, "sent", job=job, sid=sid)
 		log(DEBUG, "done.")
-
-	def run(self):
-		while True:
-			off_time = self.off_time_rv.sample()
-			log(DEBUG, "off...", off_time=off_time)
-			time.sleep(off_time)
-
-			on_time = self.on_time_rv.sample()
-			log(DEBUG, "on!", on_time=on_time)
-			self.is_on = True
-			t = threading.Thread(target=self.gen_jobs, daemon=True)
-			t.start()
-			time.sleep(on_time)
-			self.is_on = False
-			self.inter_job_gen_event.set()
-
-			if self.num_jobs_finished >= self.num_jobs_to_finish:
-				self.close()
-				break
 
 	def summarize_job_info(self):
 		sid__T_l_m = {sid: [] for sid in self.sid_ip_m}
@@ -140,7 +156,7 @@ class Client():
 		# CDF of job turnaround times
 		ax = plot.gca()
 		for sid, T_l in sid__T_l_m.items():
-			add_cdf(T_l, ax, sid, next(nice_color), drawline_x_l=[1000*self.max_delay])
+			add_cdf(T_l, ax, sid, next(nice_color)) # drawline_x_l=[1000*self.max_delay]
 		plot.xscale('log')
 		plot.ylabel('CDF', fontsize=fontsize)
 		plot.xlabel('Turnaround time (msec)', fontsize=fontsize)
@@ -152,7 +168,7 @@ class Client():
 
 		# CDF of inter result times
 		ax = plot.gca()
-		add_cdf(self.inter_result_time_l, ax, '', next(nice_color), drawline_x_l=[1000*self.inter_job_gen_time_rv.mean()])
+		add_cdf(self.inter_result_time_l, ax, '', next(nice_color)) # drawline_x_l=[1000*self.inter_job_gen_time_rv.mean()]
 		plot.xscale('log')
 		plot.ylabel('CDF', fontsize=fontsize)
 		plot.xlabel('Inter result arrival time (msec)', fontsize=fontsize)
@@ -184,12 +200,8 @@ def run(argv):
 
 	ES = 0.5 # 0.01
 	mu = float(1/ES)
-	ar = 0.1*mu
 	c = Client(_id, sid_ip_m={'s0': '10.0.1.0'},
-						 num_jobs_to_finish=100, max_delay=2*ES, # 0.05, # 0.1, # 0.2, # 0.05
-						 on_time_rv=DiscreteRV(p_l=[1], v_l=[10]),
-						 inter_job_gen_time_rv=Exp(ar), # DiscreteRV(p_l=[1], v_l=[1/ar*1000], norm_factor=1000),
-						 off_time_rv=DiscreteRV(p_l=[1], v_l=[10]),
+						 num_jobs_to_finish=100,
 						 serv_time_rv=Exp(mu), # DiscreteRV(p_l=[1], v_l=[ES*1000], norm_factor=1000), # TPareto_forAGivenMean(l=ES/2, a=1, mean=ES)
 						 size_inBs_rv=DiscreteRV(p_l=[1], v_l=[1]))
 
@@ -206,25 +218,21 @@ def test(argv):
 	log_to_file('{}.log'.format(_id))
 
 	# input("Enter to start...\n")
-	ES = 0.2 # 0.01
+	ES = 0.1 # 0.01
 	mu = float(1/ES)
-	ar = 0.1*mu
 	c = Client(_id, sid_ip_m={'s0': '10.0.1.0'},
-						 num_jobs_to_finish=100, max_delay=2*ES, # 0.05, # 0.1, # 0.2, # 0.05
-						 on_time_rv=DiscreteRV(p_l=[1], v_l=[10]),
-						 inter_job_gen_time_rv=Exp(ar), # DiscreteRV(p_l=[1], v_l=[1/ar*1000], norm_factor=1000),
-						 off_time_rv=DiscreteRV(p_l=[1], v_l=[2]),
+						 num_jobs_to_finish=100, # 200
 						 serv_time_rv=DiscreteRV(p_l=[1], v_l=[ES*1000], norm_factor=1000), # Exp(mu), # TPareto_forAGivenMean(l=ES/2, a=1, mean=ES)
 						 size_inBs_rv=DiscreteRV(p_l=[1], v_l=[1]))
 
 	# input("Enter to summarize job info...\n")
-	time.sleep(3)
+	# time.sleep(3)
 	log(DEBUG, "", client=c)
 	c.summarize_job_info()
 
 	# input("Enter to finish...\n")
-	c.close()
-	sys.exit()
+	# c.close()
+	# sys.exit()
 
 if __name__ == '__main__':
 	if TEST:

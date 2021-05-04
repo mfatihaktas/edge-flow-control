@@ -45,12 +45,21 @@ class Job(Payload):
 		super().__init__(_id, cid, typ='j', size_inBs=size_inBs)
 		self.serv_time = serv_time
 
+		self.gen_epoch = None
+		self.reached_server_epoch = None
+
 	def __repr__(self):
 		return "Job(id= {}, cid= {}, serv_time= {}, size_inBs= {})".format(self._id, self.cid, self.serv_time, self.size_inBs)
 
 class Result(Payload):
 	def __init__(self, _id, cid):
 		super().__init__(_id, cid, typ='r', size_inBs=0)
+
+		self.gen_epoch = None
+		self.reached_server_epoch = None
+
+		self.departed_server_epoch = None
+		self.serv_time = None
 
 	def __repr__(self):
 		return "Result(id= {}, cid= {}, size_inBs= {})".format(self._id, self.cid, self.size_inBs)
@@ -63,4 +72,7 @@ class Probe(Payload):
 		return "Probe(id= {}, cid= {}, size_inBs= {})".format(self._id, self.cid, self.size_inBs)
 
 def result_from_job(job):
-	return Result(job._id, job.cid)
+	r = Result(job._id, job.cid)
+	r.gen_epoch = job.gen_epoch
+	r.reached_server_epoch = job.reached_server_epoch
+	return r

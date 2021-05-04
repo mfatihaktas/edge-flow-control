@@ -122,17 +122,14 @@ class TCPClient():
 		msg_str = msg.to_str().encode('utf-8')
 		msg_size = len(msg_str)
 		header = msg_len_header(msg_size)
-		sock.sendall(header)
+
+		header_ba = bytearray(header)
+		log(DEBUG, "", header_ba_len=len(header_ba))
+		msg_ba = bytearray(msg_str)
+		payload_ba = bytearray(msg.payload.size_inBs)
+		sock.sendall(header_ba + msg_ba + payload_ba)
+
 		log(DEBUG, "sent header")
-
-		sock.sendall(msg_str)
-		log(DEBUG, "sent msg", msg=msg)
-
-		# TODO: Payload is generated synthetically for now
-		payload = bytearray(msg.payload.size_inBs)
-		log(DEBUG, "sending payload")
-		sock.sendall(payload)
-		log(DEBUG, "sent payload", payload_size=msg.payload.size_inBs)
 
 	def close(self):
 		for sid, sock in self.sid_socket_m.items():

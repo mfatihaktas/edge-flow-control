@@ -22,7 +22,10 @@ class FlowControlServer():
 	def push(self, job):
 		check(job.cid in self.cid_q_m, "Job is from an unknown client", job=job)
 
+		# if len(self.cid_q_m[job.cid]) == 0:
+		# 	job.ref_epoch = time.time()
 		self.cid_q_m[job.cid].append(job)
+
 		log(DEBUG, "pushed", job=job)
 		return True
 
@@ -31,81 +34,47 @@ class FlowControlServer():
 			q = self.cid_q_m[self.next_cid_to_pop_q[0]]
 			self.next_cid_to_pop_q.rotate(-1)
 			if len(q) > 0:
-				return q.popleft()
-
+				# return q.popleft()
+				job = q.popleft()
+				# if len(q) > 0:
+				# 	q[0].ref_epoch = time.time()
+				return job
 		return None
 
 class FlowControlClient():
-	def __init__(self, _id, max_delay):
+	def __init__(self, _id, client_sid_q):
 		self._id = _id
-		self.max_delay = max_delay
-
-		self.job_q = queue.Queue()
-		self.tcp_client = TCPClient(_id)
+		self.client_sid_q = client_sid_q
 
 		self.sid__delay_controller_m = {}
 		self.sid_q = queue.Queue()
-		self.sid__num_probe_m = {}
-		self.num_probes_sent = 0
-
-		self.num_jobs_pushed = 0
-		self.probe_info_m = {}
 
 		t = threading.Thread(target=self.run, daemon=True)
 		t.start()
 
 	def close(self):
-		self.tcp_client.close()
+		log(DEBUG, "started;")
+		self.sid_q.put(-1)
+		for _, dc in self.sid__delay_controller_m.items():
+			dc.close()
+		log(DEBUG, "done.")
 
 	def reg(self, sid, sip):
 		if sid not in self.sid__delay_controller_m:
-			self.tcp_client.reg(sid, sip)
-			self.sid__delay_controller_m[sid] = AIMDController(sid, self.max_delay, self)
-			self.sid__num_probe_m[sid] = 0
+			self.sid__delay_controller_m[sid] = InterJobGenTimeController(sid, self.sid_q)
 			log(DEBUG, "reged", sid=sid)
-
-	def put_sid(self, sid):
-		log(DEBUG, "recved", sid=sid)
-		self.sid_q.put(sid, block=False)
-
-	def put_job(self, job):
-		log(DEBUG, "recved", job=job)
-		self.job_q.put(job, block=False)
-
-	def send_probe(self, sid):
-		probe = Probe(_id=num_probes_sent, cid=self._id)
-		msg = Msg(_id=self.num_probes_sent, payload=probe, dst_id=sid)
-		self.tcp_client.send(msg)
-
-		self.probe_info_m[probe] = {'sent_time': time.time()}
-
-		self.num_probes_sent += 1
-		log(DEBUG, "sent", probe=probe)
-
-	def handle_probe(self, sid, probe):
-		check(probe in self.probe_info_m, "Probe has not been entered probe_info_m.")
-		log(DEBUG, "handling", sid=sid, probe=probe)
-		info = self.probe_info_m[probe]
-		t = time.time() - info['sent_time']
-		info.update(
-			{
-				'fate': 'returned',
-				'sid': sid,
-				'T': 1000*t
-			})
-
-		self.sid__delay_controller_m[sid].update_w_probe(t)
-		self.probe_on_air = False
+		else:
+			log(WARNING, "Already reged!", sid=sid)
 
 	def run(self):
 		while True:
-			job = self.job_q.get(block=True)
 			sid = self.sid_q.get(block=True)
 
-			msg = Msg(_id=self.num_jobs_pushed, payload=job, dst_id=sid)
-			self.tcp_client.send(msg)
-			self.num_jobs_pushed += 1
-			log(DEBUG, "sent", job=job, sid=sid)
+			self.client_sid_q.put(sid)
+
+			if sid == -1:
+				log(DEBUG, "recved close signal, terminating the loop thread.")
+				return
 
 	def update_delay_controller(self, sid, t):
 		self.sid__delay_controller_m[sid].update_w_result(t)
