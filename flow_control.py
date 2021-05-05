@@ -3,7 +3,6 @@
 from collections import deque
 import queue
 
-from tcp import *
 from delay_control import *
 
 # cid : client id

@@ -3,7 +3,7 @@ import threading, time, sys, getopt
 from config import *
 from plot_utils import *
 from rvs import *
-from tcp import *
+from trans import *
 from flow_control import *
 
 # def send_probe(self, sid):
@@ -41,13 +41,13 @@ class Client():
 		self.serv_time_rv = serv_time_rv
 		self.size_inBs_rv = size_inBs_rv
 
-		self.tcp_client = TCPClient(_id)
-		self.tcp_server = TCPServer(_id, self.handle_msg)
+		self.trans_client = TransClient(_id)
+		self.trans_server = TransServer(_id, self.handle_msg)
 
 		self.sid_q = queue.Queue()
 		self.fc_client = FlowControlClient(_id, self.sid_q)
 		for sid, sip in sid_ip_m.items():
-			self.tcp_client.reg(sid, sip)
+			self.trans_client.reg(sid, sip)
 			self.fc_client.reg(sid, sip)
 
 		self.num_jobs_gened = 0
@@ -78,7 +78,7 @@ class Client():
 		self.on = False
 		self.sid_q.put(-1)
 
-		self.tcp_client.close()
+		self.trans_client.close()
 		self.fc_client.close()
 		log(DEBUG, "done.")
 
@@ -133,7 +133,7 @@ class Client():
 			self.job_info_m[job] = {}
 
 			msg = Msg(_id=self.num_jobs_gened, payload=job, dst_id=sid)
-			self.tcp_client.send(msg)
+			self.trans_client.send_msg(msg)
 			log(DEBUG, "sent", job=job, sid=sid)
 		log(DEBUG, "done.")
 
@@ -225,7 +225,7 @@ def test(argv):
 	c = Client(_id, sid_ip_m={'s0': '10.0.1.0'},
 						 num_jobs_to_finish=100, # 200
 						 serv_time_rv=DiscreteRV(p_l=[1], v_l=[ES*1000], norm_factor=1000), # Exp(mu), # TPareto_forAGivenMean(l=ES/2, a=1, mean=ES)
-						 size_inBs_rv=DiscreteRV(p_l=[1], v_l=[1]))
+						 size_inBs_rv=DiscreteRV(p_l=[1], v_l=[1024*10*20]))
 
 	# input("Enter to summarize job info...\n")
 	# time.sleep(3)

@@ -1,15 +1,15 @@
 import threading, time, sys, getopt
 
 from config import *
-from tcp import *
+from trans import *
 from flow_control import *
 
 class Server():
 	def __init__(self, _id):
 		self._id = _id
 
-		self.tcp_server = TCPServer(_id, self.handle_msg)
-		self.tcp_client = TCPClient(_id)
+		self.trans_server = TransServer(_id, self.handle_msg)
+		self.trans_client = TransClient(_id)
 
 		self.fc_server = FlowControlServer()
 
@@ -22,7 +22,7 @@ class Server():
 	def handle_msg(self, msg):
 		log(DEBUG, "handling", msg=msg)
 		cid = msg.src_id
-		self.tcp_client.reg(cid, msg.src_ip)
+		self.trans_client.reg(cid, msg.src_ip)
 		self.fc_server.reg(cid)
 
 		payload = msg.payload
@@ -64,7 +64,7 @@ class Server():
 			elif job.is_probe():
 				msg = Msg(job._id, payload=job, dst_id=job.cid) # return the probe back to the client
 
-			self.tcp_client.send(msg)
+			self.trans_client.send_msg(msg)
 
 def parse_argv(argv):
 	i = None
