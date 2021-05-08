@@ -8,8 +8,7 @@ class Server():
 	def __init__(self, _id):
 		self._id = _id
 
-		self.trans_server = TransServer(_id, self.handle_msg)
-		self.trans_client = TransClient(_id)
+		self.commer = CommerOnServer(_id, self.handle_msg)
 
 		self.fc_server = FlowControlServer()
 
@@ -22,7 +21,6 @@ class Server():
 	def handle_msg(self, msg):
 		log(DEBUG, "handling", msg=msg)
 		cid = msg.src_id
-		self.trans_client.reg(cid, msg.src_ip)
 		self.fc_server.reg(cid)
 
 		payload = msg.payload
@@ -62,9 +60,9 @@ class Server():
 				result.departed_server_epoch = time.time()
 				msg = Msg(job._id, payload=result, dst_id=job.cid)
 			elif job.is_probe():
-				msg = Msg(job._id, payload=job, dst_id=job.cid) # return the probe back to the client
+				msg = Msg(job._id, payload=job) # return the probe back to the client
 
-			self.trans_client.send_msg(msg)
+			self.commer.send_msg(job.cid, msg)
 
 def parse_argv(argv):
 	i = None

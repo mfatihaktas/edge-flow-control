@@ -6,31 +6,6 @@ from rvs import *
 from trans import *
 from flow_control import *
 
-# def send_probe(self, sid):
-# 	probe = Probe(_id=num_probes_sent, cid=self._id)
-# 	msg = Msg(_id=self.num_probes_sent, payload=probe, dst_id=sid)
-# 	self.tcp_client.send(msg)
-
-# 	self.probe_info_m[probe] = {'sent_time': time.time()}
-
-# 	self.num_probes_sent += 1
-# 	log(DEBUG, "sent", probe=probe)
-
-# def handle_probe(self, sid, probe):
-# 	check(probe in self.probe_info_m, "Probe has not been entered probe_info_m.")
-# 	log(DEBUG, "handling", sid=sid, probe=probe)
-# 	info = self.probe_info_m[probe]
-# 	t = time.time() - info['sent_time']
-# 	info.update(
-# 		{
-# 			'fate': 'returned',
-# 			'sid': sid,
-# 			'T': 1000*t
-# 		})
-
-# 	self.sid__delay_controller_m[sid].update_w_probe(t)
-# 	self.probe_on_air = False
-
 class Client():
 	def __init__(self, _id, sid_ip_m,
 							 num_jobs_to_finish,
@@ -41,13 +16,12 @@ class Client():
 		self.serv_time_rv = serv_time_rv
 		self.size_inBs_rv = size_inBs_rv
 
-		self.trans_client = TransClient(_id)
-		self.trans_server = TransServer(_id, self.handle_msg)
+		self.commer = CommerOnClient(_id, self.handle_msg)
 
 		self.sid_q = queue.Queue()
 		self.fc_client = FlowControlClient(_id, self.sid_q)
 		for sid, sip in sid_ip_m.items():
-			self.trans_client.reg(sid, sip)
+			self.commer.reg(sid, sip)
 			self.fc_client.reg(sid, sip)
 
 		self.num_jobs_gened = 0
@@ -78,7 +52,7 @@ class Client():
 		self.on = False
 		self.sid_q.put(-1)
 
-		self.trans_client.close()
+		self.commer.close()
 		self.fc_client.close()
 		log(DEBUG, "done.")
 
@@ -132,8 +106,8 @@ class Client():
 			job.gen_epoch = time.time()
 			self.job_info_m[job] = {}
 
-			msg = Msg(_id=self.num_jobs_gened, payload=job, dst_id=sid)
-			self.trans_client.send_msg(msg)
+			msg = Msg(_id=self.num_jobs_gened, payload=job)
+			self.commer.send_msg(sid, msg)
 			log(DEBUG, "sent", job=job, sid=sid)
 		log(DEBUG, "done.")
 
@@ -225,7 +199,7 @@ def test(argv):
 	c = Client(_id, sid_ip_m={'s0': '10.0.1.0'},
 						 num_jobs_to_finish=100, # 200
 						 serv_time_rv=DiscreteRV(p_l=[1], v_l=[ES*1000], norm_factor=1000), # Exp(mu), # TPareto_forAGivenMean(l=ES/2, a=1, mean=ES)
-						 size_inBs_rv=DiscreteRV(p_l=[1], v_l=[1024*10*20]))
+						 size_inBs_rv=DiscreteRV(p_l=[1], v_l=[PACKET_SIZE*10]))
 
 	# input("Enter to summarize job info...\n")
 	# time.sleep(3)

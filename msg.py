@@ -18,6 +18,24 @@ class Msg():
 def msg_from_str(s):
 	return jsonpickle.decode(s)
 
+class ConnReq():
+	def __init__(self, port_client_listening):
+		self.port_client_listening = port_client_listening
+
+		self.size_inBs = 0
+
+	def __repr__(self):
+		return "ConnReq(port_client_listening= {})".format(self.port_client_listening)
+
+class ConnReply():
+	def __init__(self, port_server_listening):
+		self.port_server_listening = port_server_listening
+
+		self.size_inBs = 0
+
+	def __repr__(self):
+		return "ConnReply(port_server_listening= {})".format(self.port_server_listening)
+
 class Payload():
 	def __init__(self, _id, cid, typ, size_inBs):
 		self._id = _id
@@ -29,7 +47,7 @@ class Payload():
 		return hash((self._id, self.cid))
 
 	def __eq__(self, other):
-		return (self._id, self.cid) == (self._id, self.cid)
+		return (self._id, self.cid) == (other._id, other.cid)
 
 	def is_job(self):
 		return self.typ == 'j'

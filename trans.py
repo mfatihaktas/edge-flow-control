@@ -5,92 +5,31 @@ import sys, socket, socketserver, getopt, threading, subprocess, json, time
 from msg import *
 from debug_utils import *
 
-class ThreadedUDPServer(socketserver.ThreadingMixIn, socketserver.UDPServer):
-	def __init__(self, _id, server_addr, call_back):
-		socketserver.UDPServer.__init__(self, server_addr, ThreadedUDPRequestHandler)
-		self._id = _id
-		self.call_back = call_back
-
-	def __repr__(self):
-		return "ThreadedUDPServer(id= {})".format(self._id)
-
 class ThreadedTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
 	def __init__(self, _id, server_addr, call_back):
 		socketserver.TCPServer.__init__(self, server_addr, ThreadedTCPRequestHandler)
 		self._id = _id
 		self.call_back = call_back
 
-	def __repr__(self):
-		return "ThreadedTCPServer(id= {})".format(self._id)
-
 MSG_LEN_HEADER_SIZE = 10
 
-# Reference:
-# - https://gist.github.com/arthurafarias/7258a2b83433dfda013f1954aaecd50a
-# - https://note.artchiu.org/2017/10/16/python-multithread-udp-socket-server/
-class ThreadedUDPRequestHandler(socketserver.BaseRequestHandler):
-	# handle() is called for every UDP packet received. Thus the logic below
-	# will not work.
+class ConnReqHandler(socketserver.BaseRequestHandler):
 	def handle(self):
-		data = self.request[0].strip()
-		log(DEBUG, "recved", data=data)
+		msg_str = self.request.recv(1024).strip()
 
-		check(len(data) == MSG_LEN_HEADER_SIZE, "Header length is wrong.")
-		msg_len = int(data)
-		if msg_len == 0:
-	 		log(DEBUG, "Recved end signal.")
-	 		return
-
-		sock = self.request[1]
-		msg_str = sock.recvfrom(msg_len)
+		cip = self.client_address[0]
 		msg = msg_from_str(msg_str)
-		log(DEBUG, "recved", msg=msg)
+		log(DEBUG, "recved", msg=msg, cip=cip)
 
-		if msg.payload.size_inBs > 0:
-			total_size = msg.payload.size_inBs
-			log(DEBUG, 'will recv payload', total_size=total_size)
-			while total_size > 0:
-				to_recv_size = min(total_size, 10*1024)
-				self.sock.recvfrom(to_recv_size)
-				log(DEBUG, 'recved', size=to_recv_size)
-				total_size -= to_recv_size
-			log(DEBUG, 'finished recving the payload', total_size=msg.payload.size_inBs)
+		self.server.handle_conn_req(self.request, cip, msg)
 
-		self.server.call_back(msg)
+class ConnReqServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
+	def __init__(self, _id, server_addr, handle_conn_req):
+		socketserver.TCPServer.__init__(self, server_addr, ConnReqHandler)
+		self._id = _id
+		self.handle_conn_req = handle_conn_req
 
-class ThreadedTCPRequestHandler(socketserver.BaseRequestHandler):
-	def handle(self):
-		while True:
-			msg_len_header = self.request.recv(MSG_LEN_HEADER_SIZE)
-			log(DEBUG, "recved", msg_len_header=msg_len_header)
-			try:
-				msg_len = int(msg_len_header)
-			except ValueError:
-				log(WARNING, "Recved NON-header.")
-				continue
-
-			if msg_len == 0:
-				log(DEBUG, "Recved end signal...terminating the request handler.")
-				return
-
-			msg_str = self.request.recv(msg_len)
-			msg = msg_from_str(msg_str)
-			# cur_thread = threading.current_thread()
-			log(DEBUG, "recved", msg=msg)
-
-			if msg.payload.size_inBs > 0:
-				total_size = msg.payload.size_inBs
-				log(DEBUG, 'will recv payload', total_size=total_size)
-				while total_size > 0:
-					to_recv_size = min(total_size, 10*1024)
-					self.request.recv(to_recv_size)
-					# data = self.request.recv(1)
-					# recved_size = sys.getsizeof(data)
-					log(DEBUG, 'recved', size=to_recv_size)
-					total_size -= to_recv_size
-				log(DEBUG, 'finished recving the payload', total_size=msg.payload.size_inBs)
-
-			self.server.call_back(msg)
+		log(DEBUG, "constructed", server_addr=server_addr)
 
 def get_eth0_ip():
 	# search and bind to eth0 ip address
@@ -109,100 +48,245 @@ def msg_len_header(msg_size):
 	msg_size_str = str(msg_size)
 	return ('0' * (MSG_LEN_HEADER_SIZE - len(msg_size_str)) + msg_size_str).encode('utf-8')
 
-class TransServer():
-	def __init__(self, _id, handle_msg, listen_port=5000):
+def connect(ip, port):
+	log(DEBUG, "started;", ip=ip, port=port)
+	try:
+		if TRANS == 'TCP':
+			sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+			sock.connect((ip, port))
+		elif TRANS == 'UDP':
+			sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+		return sock
+	except IOError as e:
+		if e.errno == errno.EPIPE: # insuffient buffer at the server side
+			assert_("broken pipe err")
+			return None
+
+	log(DEBUG, "done.", ip=ip, port=port)
+
+def bind_get_sock(ip, port):
+	if TRANS == 'TCP':
+		conn_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+		conn_sock.bind((ip, port))
+		# conn_sock.listen(1)
+		log(DEBUG, "Binded on, listening...", ip=ip, port=port)
+		conn_sock.listen()
+		sock, addr = conn_sock.accept()
+		log(DEBUG, "Got connection", addr=addr)
+	elif TRANS == 'UDP':
+		sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+		sock.bind((ip, port))
+		log(DEBUG, "Binded on", ip=ip, port=port)
+
+	return sock
+
+PACKET_SIZE=1024*4 # 1024*10
+
+def recv_size(size, recv):
+	data = bytearray()
+	size_to_recv = size
+	while size_to_recv > 0:
+		data_recved = recv(size_to_recv)
+		size_to_recv -= len(data_recved)
+		data.extend(data_recved)
+	return data
+
+def recv_msg(sock):
+	total_size_recved = 0
+	recv = lambda size: sock.recv(size)
+	msg_len_header = recv_size(MSG_LEN_HEADER_SIZE, recv)
+	total_size_recved += MSG_LEN_HEADER_SIZE
+	log(DEBUG, "recved header", msg_len_header=msg_len_header)
+	msg_len = int(msg_len_header)
+	log(DEBUG, "will recv msg", msg_len=msg_len)
+	if msg_len == 0:
+		return None
+
+	msg_str = recv_size(msg_len, recv)
+	msg = msg_from_str(msg_str)
+	total_size_recved += len(msg_str)
+	log(DEBUG, "recved", msg=msg)
+
+	if msg.payload.size_inBs > 0:
+		total_size_to_recv = msg.payload.size_inBs
+		log(DEBUG, 'will recv payload', total_size_to_recv=total_size_to_recv)
+		while total_size_to_recv > 0:
+			size_to_recv = min(total_size_to_recv, PACKET_SIZE)
+			data = sock.recv(size_to_recv)
+			size_recved = len(data)
+			log(DEBUG, 'recved', size=size_recved)
+			total_size_to_recv -= size_recved
+			total_size_recved += size_recved
+
+		log(DEBUG, "finished recving the payload", size=msg.payload.size_inBs)
+
+	log(DEBUG, "done.", total_size_recved=total_size_recved)
+	return msg
+
+def send_msg(sock, msg, trans=TRANS, to_addr=None):
+	check(trans != 'UDP' or to_addr is not None, "Trans is UDP but to_addr is None.")
+
+	if msg is None:
+		header_ba = bytearray(msg_len_header(0))
+		if trans == 'TCP':
+			sock.sendall(header_ba)
+		elif trans == 'UDP':
+			sock.sendto(header_ba, to_addr)
+		return
+
+	msg_str = msg.to_str().encode('utf-8')
+	msg_size = len(msg_str)
+	header = msg_len_header(msg_size)
+
+	header_ba = bytearray(header)
+	msg_ba = bytearray(msg_str)
+	if msg.payload.size_inBs > 0:
+		payload_ba = bytearray(msg.payload.size_inBs)
+
+	if trans == 'TCP':
+		data = header_ba + msg_ba + payload_ba if msg.payload.size_inBs > 0 else header_ba + msg_ba
+		# sock.sendall(data)
+
+		total_size = len(data)
+		for i in range(0, total_size, PACKET_SIZE):
+			sock.send(data[i:min(i + PACKET_SIZE, total_size)])
+		log(DEBUG, "sent", total_size=total_size)
+
+	elif trans == 'UDP':
+		sock.sendto(header_ba, to_addr)
+		sock.sendto(msg_ba, to_addr)
+
+		if msg.payload.size_inBs > 0:
+			total_size = len(payload_ba)
+			for i in range(0, total_size, PACKET_SIZE):
+				sock.sendto(payload_ba[i:min(i + PACKET_SIZE, total_size)], to_addr)
+
+LISTEN_IP=get_eth0_ip()
+CONN_REQ_PORT=5000
+
+class CommerOnServer():
+	def __init__(self, _id, handle_msg):
 		self._id = _id
 		self.handle_msg = handle_msg
 
-		listen_ip = get_eth0_ip()
+		self.port_to_listen_next_client = 5001
 
-		log(DEBUG, "id= {}, listen_ip= {}, listen_port= {}".format(self._id, listen_ip, listen_port))
+		self.conn_req_server = ConnReqServer(self._id, (LISTEN_IP, CONN_REQ_PORT), self.handle_conn_req)
+		self.conn_req_server_thread = threading.Thread(target=self.conn_req_server.serve_forever, daemon=True)
+		self.conn_req_server_thread.start()
 
-		if TRANS == 'TCP':
-			self.server = ThreadedTCPServer(self._id, (listen_ip, listen_port), handle_msg)
-		elif TRANS == 'UDP':
-			self.server = ThreadedUDPServer(self._id, (listen_ip, listen_port), handle_msg)
-		self.server_thread = threading.Thread(target=self.server.serve_forever, daemon=True)
-		self.server_thread.start()
-		log(DEBUG, "Server started running in thread.")
+		self.cid_sock_m = {}
+		self.cid_addr_m = {}
 
 	def close(self):
-		self.server.shutdown()
+		log(DEBUG, "started;")
+		self.conn_req_server_thread.shutdown()
 		log(DEBUG, "done.")
 
-class TransClient():
-	def __init__(self, _id, server_listen_port=5000):
-		self._id = _id
-		self.server_listen_port = server_listen_port
+	def handle_conn_req(self, request, cip, msg):
+		log(DEBUG, "started;", msg=msg)
+		check(msg.dst_id == self._id, "Msg recved at the wrong destination.")
 
-		self.sid_ip_m = {} # sid: server_id
+		cid = msg.src_id
+		## Start listening to client
+		t = threading.Thread(target=self.start_listening_client, args=(cid, self.port_to_listen_next_client), daemon=True)
+		t.start()
+
+		## Create the sock to client
+		conn_req = msg.payload
+		self.cid_sock_m[cid] = connect(cip, conn_req.port_client_listening)
+		self.cid_addr_m[cid] = (cip, conn_req.port_client_listening)
+
+		## Reply to client
+		conn_reply = ConnReply(port_server_listening=self.port_to_listen_next_client)
+		self.port_to_listen_next_client += 1
+		msg = Msg(_id=-1, payload=conn_reply, dst_id=cid)
+		send_msg(request, msg, trans='TCP')
+
+		log(DEBUG, "done.")
+
+	def start_listening_client(self, cid, port):
+		log(DEBUG, "started;", cid=cid, port=port)
+
+		sock = bind_get_sock(LISTEN_IP, port)
+		while True:
+			msg = recv_msg(sock)
+			if msg is None:
+				log(DEBUG, "Recved close signal...terminating the request handler.")
+				break
+			self.handle_msg(msg)
+
+		log(DEBUG, "done.", cid=cid)
+
+	def send_msg(self, cid, msg):
+		check(cid in self.cid_sock_m, "Should have been connected to client.")
+		msg.src_id = self._id
+		msg.dst_id = cid
+		send_msg(self.cid_sock_m[cid], msg, to_addr=self.cid_addr_m[cid])
+
+class CommerOnClient():
+	def __init__(self, _id, handle_msg):
+		self._id = _id
+		self.handle_msg = handle_msg
+		self.port_to_listen_next_server = 5000
+
+		self.sid_addr_m = {} # sid: server_id
 		self.ip = get_eth0_ip()
-		self.sid_socket_m = {}
+		self.sid_sock_m = {}
 
 	def reg(self, sid, sip):
-		if sid not in self.sid_ip_m:
-			self.sid_ip_m[sid] = sip
-			self.connect_to_server(sid)
+		if sid not in self.sid_addr_m:
+			self.connect_to_server(sid, sip)
 
-	def connect_to_server(self, sid):
-		check(sid in self.sid_ip_m, "not reged", sid=sid)
-		sip = self.sid_ip_m[sid]
-		try:
-			if TRANS == 'TCP':
-				sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-				sock.connect((sip, self.server_listen_port))
-			elif TRANS == 'UDP':
-				sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-		except IOError as e:
-			if e.errno == errno.EPIPE: # insuffient buffer at the server side
-				assert_("broken pipe err")
+	def connect_to_server(self, sid, sip):
+		log(DEBUG, "started;", sid=sid, sip=sip)
 
-		self.sid_socket_m[sid] = sock
-		log(DEBUG, "connected", sid=sid, sip=sip)
+		## Start listening to server
+		t = threading.Thread(target=self.start_listening_server, args=(sid, self.port_to_listen_next_server), daemon=True)
+		t.start()
 
-	def send(self, sid, data):
-		sock = self.sid_socket_m[sid]
-		if TRANS == 'TCP':
-			sock.sendall(data)
-		elif TRANS == 'UDP':
-			sock.sendto(data, (self.sid_ip_m[sid], self.server_listen_port))
+		## Send connection request
+		sock = connect(sip, CONN_REQ_PORT)
+		conn_req = ConnReq(port_client_listening=self.port_to_listen_next_server)
+		self.port_to_listen_next_server += 1
+		msg = Msg(_id=-1, payload=conn_req, src_id=self._id, dst_id=sid)
+		sock.sendall(msg.to_str().encode('utf-8'))
 
-	def send_msg(self, msg):
-		sid = msg.dst_id
-		if sid not in self.sid_socket_m:
-			self.connect_to_server(sid)
+		## Recv connection reply
+		msg = recv_msg(sock)
+		check(msg is not None, "Conn req cannot contain None as msg.")
 
-		msg.src_id = self._id
-		msg.src_ip = self.ip
+		## Create transport socket to server
+		conn_reply = msg.payload
+		self.sid_sock_m[sid] = connect(sip, conn_reply.port_server_listening)
 
-		msg_str = msg.to_str().encode('utf-8')
-		msg_size = len(msg_str)
-		header = msg_len_header(msg_size)
+		self.sid_addr_m[sid] = (sip, conn_reply.port_server_listening)
+		log(DEBUG, "done.", sid=sid)
 
-		header_ba = bytearray(header)
-		msg_ba = bytearray(msg_str)
-		payload_ba = bytearray(msg.payload.size_inBs)
-		log(DEBUG, "", payload_ba_len=len(payload_ba))
+	def start_listening_server(self, cid, port):
+		log(DEBUG, "started;", cid=cid, port=port)
 
-		if TRANS == 'TCP':
-			self.send(sid, header_ba + msg_ba + payload_ba)
-		elif TRANS == 'UDP':
-			self.send(sid, header_ba)
-			self.send(sid, msg_ba)
+		sock = bind_get_sock(LISTEN_IP, port)
+		while True:
+			msg = recv_msg(sock)
+			if msg is None:
+				log(DEBUG, "Recved close signal...terminating the request handler.")
+				break
+			self.handle_msg(msg)
 
-			total_size = len(payload_ba)
-			packet_size = 60000 # Bs
-			for i in range(0, total_size, packet_size):
-				self.send(sid, payload_ba[i:min(i + packet_size, total_size)])
+		log(DEBUG, "done.", cid=cid)
 
-		log(DEBUG, "sent", msg=msg)
+	def send_msg(self, sid, msg):
+		check(sid in self.sid_sock_m, "Should have been connected to server.")
+		if msg is not None:
+			msg.src_id = self._id
+			msg.src_ip = self.ip
+			msg.dst_id = sid
+		send_msg(self.sid_sock_m[sid], msg, to_addr=self.sid_addr_m[sid])
 
 	def close(self):
-		for sid in self.sid_socket_m:
-			self.send(sid, msg_len_header(0))
+		log(DEBUG, "started;")
+		for sid in self.sid_sock_m:
+			self.send_msg(sid, msg=None)
 			log(DEBUG, "sent close signal", sid=sid)
-
-	def broadcast(self, msg):
-		for sid in self.sid_socket_m:
-			msg.dst_id = sid
-			self.send(msg)
+		log(DEBUG, "done.")
