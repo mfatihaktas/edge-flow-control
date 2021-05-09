@@ -9,7 +9,7 @@ elif [ $1 = 'nt' ]; then
   $PY net_test.py
 elif [ $1 = 'c' ]; then
   [ -z "$2" ] && { echo "Which client [0, *] ?"; exit 1; }
-  $PY -u client.py --i=$2
+  $PY -u client.py --i=$2 --sid_ip_m='{"s0": "10.0.1.0"}'
 elif [ $1 = 's' ]; then
   rm *.png *.log
   pkill -f client.py

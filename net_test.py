@@ -20,7 +20,7 @@ class MyTopo(Topo):
 
 		sw0 = self.addSwitch('sw0')
 
-		link_opts = dict(bw=1000, delay='1ms', loss=0, max_queue_size=1000, use_htb=True)
+		link_opts = dict(bw=1000, delay='50ms', loss=0, max_queue_size=1000, use_htb=True)
 		self.addLink(s0, sw0, **link_opts)
 		self.addLink(c0, sw0, **link_opts)
 		self.addLink(c1, sw0, **link_opts)

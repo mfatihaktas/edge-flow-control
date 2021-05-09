@@ -155,28 +155,30 @@ class Client():
 		log(DEBUG, "done.")
 
 def parse_argv(argv):
-	i = None
+	m = {}
 	try:
-		opts, args = getopt.getopt(argv, '', ['i='])
+		opts, args = getopt.getopt(argv, '', ['i=', 'sid_ip_m='])
 	except getopt.GetoptError:
 		assert_("Wrong args;", opts=opts, args=args)
 
 	for opt, arg in opts:
 		if opt == '--i':
-			i = arg
+			m['i'] = arg
+		elif opt == '--sid_ip_m':
+			m['sid_ip_m'] = json.loads(arg)
 		else:
 			assert_("Unexpected opt= {}, arg= {}".format(opt, arg))
 
-	check(i is not None, "i is not set.")
-	return i
+	return m
 
 def run(argv):
-	_id = 'c' + parse_argv(argv)
+	m = parse_argv(argv)
+	_id = 'c' + m['i']
 	log_to_file('{}.log'.format(_id))
 
 	ES = 0.5 # 0.01
 	mu = float(1/ES)
-	c = Client(_id, sid_ip_m={'s0': '10.0.1.0'},
+	c = Client(_id, sid_ip_m=m['sid_ip_m'],
 						 num_jobs_to_finish=100,
 						 serv_time_rv=Exp(mu), # DiscreteRV(p_l=[1], v_l=[ES*1000], norm_factor=1000), # TPareto_forAGivenMean(l=ES/2, a=1, mean=ES)
 						 size_inBs_rv=DiscreteRV(p_l=[1], v_l=[1]))
@@ -190,13 +192,14 @@ def run(argv):
 	sys.exit()
 
 def test(argv):
-	_id = 'c' + parse_argv(argv)
+	m = parse_argv(argv)
+	_id = 'c' + m['i']
 	log_to_file('{}.log'.format(_id))
 
 	# input("Enter to start...\n")
 	ES = 0.1 # 0.01
 	mu = float(1/ES)
-	c = Client(_id, sid_ip_m={'s0': '10.0.1.0'},
+	c = Client(_id, sid_ip_m=m['sid_ip_m'], # {'s0': '10.0.1.0'},
 						 num_jobs_to_finish=100, # 200
 						 serv_time_rv=DiscreteRV(p_l=[1], v_l=[ES*1000], norm_factor=1000), # Exp(mu), # TPareto_forAGivenMean(l=ES/2, a=1, mean=ES)
 						 size_inBs_rv=DiscreteRV(p_l=[1], v_l=[PACKET_SIZE*10]))
