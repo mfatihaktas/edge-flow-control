@@ -37,11 +37,11 @@ class ConnReply():
 		return "ConnReply(port_server_listening= {})".format(self.port_server_listening)
 
 class Payload():
-	def __init__(self, _id, cid, typ, size_inBs):
+	def __init__(self, _id, cid, size_inBs, typ):
 		self._id = _id
 		self.cid = cid
-		self.typ = typ
 		self.size_inBs = size_inBs
+		self.typ = typ
 
 	def __hash__(self):
 		return hash((self._id, self.cid))
@@ -60,7 +60,7 @@ class Payload():
 
 class Job(Payload):
 	def __init__(self, _id, cid, serv_time, size_inBs):
-		super().__init__(_id, cid, typ='j', size_inBs=size_inBs)
+		super().__init__(_id, cid, size_inBs, typ='j')
 		self.serv_time = serv_time
 
 		self.gen_epoch = None
@@ -70,8 +70,8 @@ class Job(Payload):
 		return "Job(id= {}, cid= {}, serv_time= {}, size_inBs= {})".format(self._id, self.cid, self.serv_time, self.size_inBs)
 
 class Result(Payload):
-	def __init__(self, _id, cid):
-		super().__init__(_id, cid, typ='r', size_inBs=0)
+	def __init__(self, _id, cid, size_inBs=0):
+		super().__init__(_id, cid, size_inBs, typ='r')
 
 		self.gen_epoch = None
 		self.reached_server_epoch = None

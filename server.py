@@ -1,14 +1,17 @@
 import threading, time, sys, getopt
 
 from config import *
-from trans import *
-from flow_control import *
+from commer import CommerOnServer
+from flow_control import FlowControlServer
 
 WORKER_LISTEN_PORT = 5000
 
 class Server():
-	def __init__(self, _id, ):
+	def __init__(self, _id, wip_l):
 		self._id = _id
+		self.wip_l = wip_l
+
+		WORKER_LISTEN_PORT
 
 		self.commer = CommerOnServer(_id, self.handle_msg)
 

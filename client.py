@@ -3,8 +3,8 @@ import threading, time, sys, getopt
 from config import *
 from plot_utils import *
 from rvs import *
-from trans import *
-from flow_control import *
+from commer import CommerOnClient
+from flow_control import FlowControlClient
 
 class Client():
 	def __init__(self, _id, sid_ip_m,
