@@ -3,6 +3,7 @@ echo $1 $2 $3
 
 DOCKER=docker
 IMG_NAME=edge-flow
+HUB_IMG_NAME=mfatihaktas/$IMG_NAME:latest
 CONT_NAME=edge-app
 NET_NAME=edge-net
 
@@ -11,7 +12,9 @@ if [ $1 = 'b' ]; then
   rm *.png *.log
   $DOCKER build -t $IMG_NAME .
 elif [ $1 = 'ri' ]; then
-  $DOCKER run --name $CONT_NAME -it --rm -d $IMG_NAME /bin/bash
+  $DOCKER run --name $CONT_NAME -it --rm $HUB_IMG_NAME /bin/bash
+elif [ $1 = 'rn' ]; then
+  $DOCKER run --name nginx  -d -p 8080:80 nginx
 elif [ $1 = 'rsd' ]; then
   [ -z "$2" ] && { echo "Which server [0, *] ?"; exit 1; }
   # $DOCKER run --name $CONT_NAME -it --rm $IMG_NAME ping localhost # Test that should work
@@ -34,17 +37,20 @@ elif [ $1 = 'stop' ]; then
 elif [ $1 = 'kill' ]; then
   $DOCKER kill $CONT_NAME
 elif [ $1 = 'bash' ]; then
-  $DOCKER exec -it $CONT_NAME bash
+  # $DOCKER exec -it $CONT_NAME bash
+  $DOCKER exec -it $2 bash
 elif [ $1 = 'lsc' ]; then
   $DOCKER ps --all
 elif [ $1 = 'lsi' ]; then
   $DOCKER images
-elif [ $1  = 't' ]; then
-  $DOCKER tag $IMG_NAME mfatihaktas/$IMG_NAME:trial
+elif [ $1  = 'tag' ]; then
+  $DOCKER tag $IMG_NAME $HUB_IMG_NAME
 elif [ $1  = 'rm' ]; then
   $DOCKER rm $2
 elif [ $1 = 'rmi' ]; then
   $DOCKER image rm $2
+elif [ $1 = 'push' ]; then
+  $DOCKER push $HUB_IMG_NAME
 elif [ $1 = 'pull' ]; then
   $DOCKER pull $2
 elif [ $1 = 'cn' ]; then

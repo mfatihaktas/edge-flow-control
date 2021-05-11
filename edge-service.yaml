@@ -1,0 +1,18 @@
+apiVersion: apps/v1
+kind: Service
+metadata:
+  name: edge-server
+  labels:
+    app: edge-server
+spec:
+  ports:
+  - name: tcp
+    protocol: TCP
+    port: 5000
+    targetPort: 5000
+  - name: udp
+    protocol: UDP
+    port: 5000
+    targetPort: 5000
+  selector:
+    app: edge-server

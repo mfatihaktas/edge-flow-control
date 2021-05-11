@@ -7,9 +7,12 @@ from flow_control import *
 WORKER_LISTEN_PORT = 5000
 
 class Server():
-	def __init__(self, _id, ):
+	def __init__(self, _id, wip_l):
 		self._id = _id
-
+		self.wip_l = wip_l
+		
+		WORKER_LISTEN_PORT
+		
 		self.commer = CommerOnServer(_id, self.handle_msg)
 
 		self.fc_server = FlowControlServer()
