@@ -12,7 +12,7 @@ if [ $1 = 'b' ]; then
   rm *.png *.log
   $DOCKER build -t $IMG_NAME .
 elif [ $1 = 'ri' ]; then
-  $DOCKER run --name $CONT_NAME -it --rm $HUB_IMG_NAME /bin/bash
+  $DOCKER run --name $CONT_NAME -it --rm $IMG_NAME /bin/bash
 elif [ $1 = 'rn' ]; then
   $DOCKER run --name nginx  -d -p 8080:80 nginx
 elif [ $1 = 'rsd' ]; then

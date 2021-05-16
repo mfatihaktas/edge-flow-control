@@ -1,23 +1,31 @@
-import threading, time, sys, getopt
+import threading, time, sys, getopt, json, queue, nslookup
 
 from config import *
+from debug_utils import *
 from commer import CommerOnServer
 from flow_control import FlowControlServer
 
-WORKER_LISTEN_PORT = 5000
+def get_wip_l(dns_sip="1.1.1.1"):
+	query = nslookup.Nslookup(dns_servers=[dns_sip])
+	record = query.dns_lookup(domain)
+	log(DEBUG, "", dns_response=record.response_full, dns_answer=record.answer)
+
+	record = query.soa_lookup(domain)
+	log(DEBUG, "", soa_response=record.response_full, soa_answer=record.answer)
 
 class Server():
-	def __init__(self, _id, wip_l):
+	def __init__(self, _id, wip_l=None, max_num_jobs_per_worker=1):
 		self._id = _id
-		self.wip_l = wip_l
-
-		WORKER_LISTEN_PORT
+		self.wip_l = wip_l if wip_l is None else get_wip_l()
 
 		self.commer = CommerOnServer(_id, self.handle_msg)
 
 		self.fc_server = FlowControlServer()
 
-		self.worker_q =
+		self.wid_q = queue.Queue()
+		for i in range(len(wip_l)):
+			for _ in range(max_num_jobs_per_worker):
+				self.wid_q.put(i)
 
 		self.wait_for_ajob = threading.Condition()
 		self.is_waiting_for_ajob = False
@@ -39,11 +47,11 @@ class Server():
 		log(DEBUG, "recved", job=job)
 
 		job.reached_server_epoch = time.time()
-		if self.fc_server.push(job):
-			if self.is_waiting_for_ajob:
-				with self.wait_for_ajob:
-					self.wait_for_ajob.notifyAll()
-					log(DEBUG, "notified")
+		self.fc_server.push(job)
+		if self.is_waiting_for_ajob:
+			with self.wait_for_ajob:
+				self.wait_for_ajob.notifyAll()
+				log(DEBUG, "notified.")
 
 	def run(self):
 		while True:
@@ -58,48 +66,57 @@ class Server():
 				continue
 
 			if job.is_job():
-				log(DEBUG, "will serv", job=job)
-				time.sleep(job.serv_time)
-				log(DEBUG, "finished serving", job=job)
-
-				result = result_from_job(job)
-				result.serv_time = time.time() - job.reached_server_epoch
-				result.departed_server_epoch = time.time()
-				msg = Msg(job._id, payload=result, dst_id=job.cid)
+				wid = self.wid_q.get(block=True)
+				t = threading.Thread(target=self.send_job_recv_result_return_to_client, args=(wid, job), daemon=True)
+				t.start()
 			elif job.is_probe():
 				msg = Msg(job._id, payload=job) # return the probe back to the client
+				self.commer.send_msg(job.cid, msg)
 
-			self.commer.send_msg(job.cid, msg)
+	def send_job_recv_result_return_to_client(self, wid, job):
+		log(DEBUG, "started;", wid=wid, job_id=job._id)
+		result = self.commer.send_job_recv_result(self.wip_l[wid], job)
+
+		result.serv_time = time.time() - job.reached_server_epoch
+		result.departed_server_epoch = time.time()
+		msg = Msg(job._id, payload=result, dst_id=job.cid)
+		self.commer.send_msg(job.cid, msg)
+
+		self.wid_q.put(wid)
+		log(DEBUG, "done.", wid=wid, job_id=job._id)
 
 def parse_argv(argv):
-	i = None
+	m = {}
 	try:
-		opts, args = getopt.getopt(argv, '', ['i='])
+		opts, args = getopt.getopt(argv, '', ['i=', 'wip_l='])
 	except getopt.GetoptError:
 		assert_("Wrong args;", opts=opts, args=args)
 
 	for opt, arg in opts:
 		if opt == '--i':
-			i = arg
+			m['i'] = arg
+		elif opt == '--wip_l':
+			m['wip_l'] = json.loads(arg)
 		else:
 			assert_("Unexpected opt= {}, arg= {}".format(opt, arg))
 
-	check(i is not None, "i is not set.")
-	return i
+	return m
 
 def run(argv):
-	_id = 's' + parse_argv(argv)
+	m = parse_argv(argv)
+	_id = 's' + m['i']
 	log_to_file('{}.log'.format(_id))
 
-	s = Server(_id)
+	s = Server(_id, m['wip_l'])
 	# input("Enter to finish...\n")
 	# sys.exit()
 
 def test(argv):
-	_id = 's' + parse_argv(argv)
+	m = parse_argv(argv)
+	_id = 's' + m['i']
 	log_to_file('{}.log'.format(_id))
 
-	s = Server(_id)
+	s = Server(_id, m['wip_l'])
 	input("Enter to finish...\n")
 	sys.exit()
 

@@ -6,8 +6,6 @@ from msg import *
 from debug_utils import *
 
 # ***************************  Commer utils  *************************** #
-MSG_LEN_HEADER_SIZE = 10
-
 def get_eth0_ip():
 	# search and bind to eth0 ip address
 	intf_list = subprocess.getoutput("ifconfig -a | sed 's/[ \t].*//;/^$/d'").split('\n')
@@ -56,8 +54,6 @@ def bind_get_sock(ip, port):
 		log(DEBUG, "Binded on", ip=ip, port=port)
 
 	return sock
-
-PACKET_SIZE=1024*4 # 1024*10
 
 def recv_size(size, recv):
 	data = bytearray()
@@ -111,6 +107,7 @@ def send_msg(sock, msg, trans=TRANS, to_addr=None):
 			sock.sendto(header_ba, to_addr)
 		return
 
+	msg.src_ip = IP_ETH0
 	msg_str = msg.to_str().encode('utf-8')
 	msg_size = len(msg_str)
 	header = msg_len_header(msg_size)
@@ -139,26 +136,38 @@ def send_msg(sock, msg, trans=TRANS, to_addr=None):
 				sock.sendto(payload_ba[i:min(i + PACKET_SIZE, total_size)], to_addr)
 
 # ***************************  CommerOnServer  *************************** #
+class ResultHandler(socketserver.BaseRequestHandler):
+	def handle(self):
+		msg = recv_msg(sock=self.request)
+		log(DEBUG, "recved", msg=msg)
+		check(msg.dst_id == self.server._id, "Msg recved at the wrong destination.")
+
+		self.server.handle_result(result=msg.payload)
+
+class ResultServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
+	def __init__(self, _id, server_addr, handle_result):
+		socketserver.TCPServer.__init__(self, server_addr, ResultHandler)
+		self._id = _id
+		self.handle_result = handle_result
+
+		log(DEBUG, "constructed", server_addr=server_addr)
+
 class ConnReqHandler(socketserver.BaseRequestHandler):
 	def handle(self):
 		msg_str = self.request.recv(1024).strip()
-
-		cip = self.client_address[0]
 		msg = msg_from_str(msg_str)
-		log(DEBUG, "recved", msg=msg, cip=cip)
+		log(DEBUG, "recved", msg=msg)
+		check(msg.dst_id == self.server._id, "Msg recved at the wrong destination.")
 
-		self.server.handle_conn_req(self.request, cip, msg)
+		self.server.handle_conn_req(cid=msg.src_id, cip=self.client_address[0], result=msg.payload, sock=self.request)
 
-class ConnReqServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
+class ConnServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
 	def __init__(self, _id, server_addr, handle_conn_req):
 		socketserver.TCPServer.__init__(self, server_addr, ConnReqHandler)
 		self._id = _id
 		self.handle_conn_req = handle_conn_req
 
 		log(DEBUG, "constructed", server_addr=server_addr)
-
-LISTEN_IP=get_eth0_ip()
-PORT_TO_LISTEN_CONN_REQ_FROM_CLIENTS=5000
 
 class CommerOnServer():
 	def __init__(self, _id, handle_msg):
@@ -167,9 +176,13 @@ class CommerOnServer():
 
 		self.port_to_listen_next_client = 5001
 
-		self.conn_req_server = ConnReqServer(self._id, (LISTEN_IP, PORT_TO_LISTEN_CONN_REQ_FROM_CLIENTS), self.handle_conn_req)
+		self.conn_req_server = ConnServer(self._id, (IP_ETH0, PORT_ON_SERVER_TO_LISTEN_FOR_CONN_REQS), self.handle_conn_req)
 		self.conn_req_server_thread = threading.Thread(target=self.conn_req_server.serve_forever, daemon=True)
 		self.conn_req_server_thread.start()
+
+		self.result_server = ResultServer(self._id, (IP_ETH0, PORT_ON_SERVER_TO_LISTEN_FOR_RESULTS), self.handle_result)
+		self.result_server_thread = threading.Thread(target=self.result_server.serve_forever, daemon=True)
+		self.result_server_thread.start()
 
 		self.cid_sock_m = {}
 		self.cid_addr_m = {}
@@ -179,17 +192,14 @@ class CommerOnServer():
 		self.conn_req_server_thread.shutdown()
 		log(DEBUG, "done.")
 
-	def handle_conn_req(self, request, cip, msg):
-		log(DEBUG, "started;", msg=msg)
-		check(msg.dst_id == self._id, "Msg recved at the wrong destination.")
+	def handle_conn_req(self, cid, cip, conn_req, sock):
+		log(DEBUG, "started;", cid=cid, cip=cip, conn_req=conn_req)
 
-		cid = msg.src_id
 		## Start listening to client
 		t = threading.Thread(target=self.start_listening_client, args=(cid, self.port_to_listen_next_client), daemon=True)
 		t.start()
 
 		## Create the sock to client
-		conn_req = msg.payload
 		self.cid_sock_m[cid] = connect(cip, conn_req.port_client_listening)
 		self.cid_addr_m[cid] = (cip, conn_req.port_client_listening)
 
@@ -197,14 +207,21 @@ class CommerOnServer():
 		conn_reply = ConnReply(port_server_listening=self.port_to_listen_next_client)
 		self.port_to_listen_next_client += 1
 		msg = Msg(_id=-1, payload=conn_reply, dst_id=cid)
-		send_msg(request, msg, trans='TCP')
+		send_msg(sock, msg, trans='TCP')
 
+		log(DEBUG, "done.")
+
+	def handle_result(self, result):
+		log(DEBUG, "started;", result=result)
+		check(result.cid in self.cid_sock_m, "Result recved for an unsubscribed client.")
+
+		self.send_msg(result.cid, msg=Msg(_id=result._id, payload=result))
 		log(DEBUG, "done.")
 
 	def start_listening_client(self, cid, port):
 		log(DEBUG, "started;", cid=cid, port=port)
 
-		sock = bind_get_sock(LISTEN_IP, port)
+		sock = bind_get_sock(IP_ETH0, port)
 		while True:
 			msg = recv_msg(sock)
 			if msg is None:
@@ -219,6 +236,18 @@ class CommerOnServer():
 		msg.src_id = self._id
 		msg.dst_id = cid
 		send_msg(self.cid_sock_m[cid], msg, to_addr=self.cid_addr_m[cid])
+
+	def send_job_recv_result(self, wip, job):
+		# TODO: Eliminate the need to connect to worker each time by using WebSocket's.
+		## Send job
+		sock = connect(wip, PORT_ON_WORKER_TO_LISTEN_FOR_JOBS)
+		msg = Msg(job._id, payload=job)
+		send_msg(sock, msg)
+
+		## Recv reply
+		msg = recv_msg(sock)
+
+		return msg.payload
 
 # ***************************  CommerOnClient  *************************** #
 class CommerOnClient():
@@ -243,7 +272,7 @@ class CommerOnClient():
 		t.start()
 
 		## Send connection request
-		sock = connect(sip, PORT_TO_LISTEN_CONN_REQ_FROM_CLIENTS)
+		sock = connect(sip, PORT_ON_SERVER_TO_LISTEN_FOR_CONN_REQS)
 		conn_req = ConnReq(port_client_listening=self.port_to_listen_next_server)
 		self.port_to_listen_next_server += 1
 		msg = Msg(_id=-1, payload=conn_req, src_id=self._id, dst_id=sid)
@@ -263,7 +292,7 @@ class CommerOnClient():
 	def start_listening_server(self, cid, port):
 		log(DEBUG, "started;", cid=cid, port=port)
 
-		sock = bind_get_sock(LISTEN_IP, port)
+		sock = bind_get_sock(IP_ETH0, port)
 		while True:
 			msg = recv_msg(sock)
 			if msg is None:
@@ -288,30 +317,30 @@ class CommerOnClient():
 			log(DEBUG, "sent close signal", sid=sid)
 		log(DEBUG, "done.")
 
-# ***************************  CommerOnWorker  *************************** #
+# ***************************	 CommerOnWorker	 *************************** #
 class JobReqHandler(socketserver.BaseRequestHandler):
 	def handle(self):
 		msg = recv_msg(sock=self.request)
-		log(DEBUG, "recved", msg=msg, sip=self.client_address[0])
-		self.server.handle_job_req(self.request, msg)
+		sip = self.client_address[0]
+		log(DEBUG, "recved", msg=msg)
+		self.server.handle_job_req(sip=self.client_address[0], job=msg.payload)
 
 class JobReqServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
 	def __init__(self, _id, server_addr, handle_job_req):
-		socketserver.TCPServer.__init__(self, server_addr, ThreadedTCPRequestHandler)
+		socketserver.TCPServer.__init__(self, server_addr, JobReqHandler)
 		self._id = _id
 		self.handle_job_req = handle_job_req
 
-LISTEN_IP=get_eth0_ip()
-PORT_TO_LISTEN_FOR_JOBS=5000
-
 class CommerOnWorker():
-	def __init__(self, _id, handle_job):
+	def __init__(self, _id, req_job_q):
 		self._id = _id
-		self.handle_job = handle_job
+		# self.handle_job = handle_job
+		self.req_job_q = req_job_q
 
-		self.job_req_server = JobReqServer(self._id, (LISTEN_IP, PORT_TO_LISTEN_FOR_JOBS), self.handle_job_req)
+		self.job_req_server = JobReqServer(self._id, (IP_ETH0, PORT_ON_WORKER_TO_LISTEN_FOR_JOBS), self.handle_job_req)
 		self.job_req_server_thread = threading.Thread(target=self.job_req_server.serve_forever, daemon=True)
 		self.job_req_server_thread.start()
+		log(DEBUG, "Started JobReqServer;", ip=IP_ETH0, port=PORT_ON_WORKER_TO_LISTEN_FOR_JOBS)
 
 		log(DEBUG, "constructed;", self=self)
 
@@ -323,15 +352,14 @@ class CommerOnWorker():
 		self.job_req_server_thread.shutdown()
 		log(DEBUG, "done.")
 
-	def handle_job_req(self, request, msg):
-		log(DEBUG, "started;", msg=msg)
-		## Handle job
-		job = msg.payload
-		result_payload = self.handle_job(job)
+	def handle_job_req(self, sip, job):
+		log(DEBUG, "started;", job=job
+		self.sip_job_q.put((sip, job))
+		log(DEBUG, "done.")
 
-		## Return result
+	def send_result_to_server(self, sip, job):
 		result = result_from_job(job)
 		# result.size_inBs = ?
-		msg = Msg(_id=job._id, payload=result)
-		send_msg(request, msg, trans='TCP')
-		log(DEBUG, "done.")
+		sock = connect(sip, PORT_ON_SERVER_TO_LISTEN_FOR_RESULTS)
+		send_msg(sock, msg=Msg(_id=result._id, payload=result, to_addr=(sip, PORT_ON_SERVER_TO_LISTEN_FOR_RESULTS)))
+		log(DEBUG, "sent", result=result)

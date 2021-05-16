@@ -20,24 +20,15 @@ class FlowControlServer():
 
 	def push(self, job):
 		check(job.cid in self.cid_q_m, "Job is from an unknown client", job=job)
-
-		# if len(self.cid_q_m[job.cid]) == 0:
-		# 	job.ref_epoch = time.time()
 		self.cid_q_m[job.cid].append(job)
-
 		log(DEBUG, "pushed", job=job)
-		return True
 
 	def pop(self):
 		for _ in range(len(self.cid_q_m)):
 			q = self.cid_q_m[self.next_cid_to_pop_q[0]]
 			self.next_cid_to_pop_q.rotate(-1)
 			if len(q) > 0:
-				# return q.popleft()
-				job = q.popleft()
-				# if len(q) > 0:
-				# 	q[0].ref_epoch = time.time()
-				return job
+				return q.popleft()
 		return None
 
 class FlowControlClient():

@@ -1,3 +1,4 @@
 jsonpickle >= 2.0.0
 matplotlib >= 3.3.4
 scipy >= 1.5.4
+nslookup

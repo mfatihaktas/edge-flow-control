@@ -8,7 +8,7 @@ spec:
   selector:
     matchLabels:
       app: iperf
-  replicas: 1
+  replicas: 2
   template:
     metadata:
       labels:
@@ -26,11 +26,10 @@ kind: Service
 metadata:
   name: iperf
 spec:
-  type: LoadBalancer
+  clusterIP: None
   selector:
     app: iperf
   ports:
     - protocol: TCP
       port: 5001
       targetPort: 5000
-      nodePort: 30000

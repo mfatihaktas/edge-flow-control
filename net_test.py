@@ -15,15 +15,24 @@ class MyTopo(Topo):
 		Topo.__init__(self)
 
 		s0 = self.addHost('s0')
+		w0 = self.addHost('w0')
 		c0 = self.addHost('c0')
 		c1 = self.addHost('c1')
 
 		sw0 = self.addSwitch('sw0')
 
-		link_opts = dict(bw=1000, delay='50ms', loss=0, max_queue_size=1000, use_htb=True)
+		link_opts = dict(bw=1000, delay='1ms', loss=0, max_queue_size=1000, use_htb=True)
+		self.addLink(w0, sw0, **link_opts)
 		self.addLink(s0, sw0, **link_opts)
 		self.addLink(c0, sw0, **link_opts)
 		self.addLink(c1, sw0, **link_opts)
+
+def run_workers(w_l):
+	popens = {}
+	for i, w in enumerate(w_l):
+		w.cmdPrint('pwd')
+		popens[w] = w.popen('./run.sh w %s' % i)
+		log(DEBUG, "Started w{}".format(i))
 
 if __name__ == '__main__':
 	setLogLevel('info')
@@ -33,6 +42,10 @@ if __name__ == '__main__':
 	s0.setIP(ip='10.0.1.0', prefixLen=32)
 	s0.setMAC(mac='00:00:00:00:01:00')
 
+	w0 = net.getNodeByName('w0')
+	w0.setIP(ip='10.0.2.0', prefixLen=32)
+	w0.setMAC(mac='00:00:00:00:02:00')
+
 	c0, c1 = net.getNodeByName('c0', 'c1')
 	c0.setIP(ip='10.0.0.0', prefixLen=32)
 	c1.setIP(ip='10.0.0.1', prefixLen=32)
@@ -41,9 +54,11 @@ if __name__ == '__main__':
 
 	## To fix "network is unreachable"
 	s0.setDefaultRoute(intf='s0-eth0')
+	w0.setDefaultRoute(intf='w0-eth0')
 	c0.setDefaultRoute(intf='c0-eth0')
 	c1.setDefaultRoute(intf='c1-eth0')
 
 	net.start()
+	# run_workers([w0])
 	CLI(net)
 	net.stop()

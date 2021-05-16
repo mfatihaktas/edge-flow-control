@@ -1,9 +1,10 @@
-import threading, time, sys, getopt
+import threading, time, sys, getopt, json, queue
 
 from config import *
 from plot_utils import *
 from rvs import *
-from commer import CommerOnClient
+from msg import *
+from commer import PACKET_SIZE, CommerOnClient
 from flow_control import FlowControlClient
 
 class Client():
