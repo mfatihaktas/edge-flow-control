@@ -19,9 +19,11 @@ elif [ $1 = 't' ]; then
 elif [ $1 = 'ru' ]; then
   $KUBECTL run -i --tty ubuntu --image=ubuntu --restart=Never -- /bin/bash
 elif [ $1 = 'rc' ]; then
+  $KUBECTL delete pod/custom
   # $KUBECTL run -i --tty custom --image=praqma/network-multitool --restart=Never
   # $KUBECTL run -i --tty custom --image=weibeld/docker-ubuntu-networking --restart=Never -- /bin/bash
-  $KUBECTL run -i --tty custom --restart=Never --image=eddiehale/utils /bin/bash
+  # $KUBECTL run -i --tty custom --restart=Never --image=eddiehale/utils /bin/bash
+  $KUBECTL run -i --tty custom --restart=Never --image=python:3 /bin/bash
 else
   echo "Arg did not match!"
 fi

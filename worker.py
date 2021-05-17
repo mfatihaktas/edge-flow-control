@@ -2,13 +2,14 @@ import threading, time, sys, getopt, queue
 
 from debug_utils import *
 from commer import CommerOnWorker
+from msg import result_from_job
 
 class Worker():
 	def __init__(self, _id):
 		self._id = _id
 
-		self.sip_job_q = queue.Queue()
-		self.commer = CommerOnWorker(_id, self.sip_job_q)
+		self.job_q = queue.Queue()
+		self.commer = CommerOnWorker(_id, self.job_q)
 
 		t = threading.Thread(target=self.run, daemon=True)
 		t.start()
@@ -21,8 +22,8 @@ class Worker():
 
 	def run(self):
 		while True:
-			sip, job = self.sip_job_q.get(block=True)
-			if sip is None:
+			job = self.job_q.get(block=True)
+			if job is None:
 				log(DEBUG, "recved close signal.")
 				self.close()
 				return
@@ -33,7 +34,9 @@ class Worker():
 			time.sleep(t)
 			log(DEBUG, "finished serving")
 
-			self.commer.send_result_to_server(sip, job)
+			result = result_from_job(job)
+			# result.size_inBs = ?
+			self.commer.send_result_to_server(result)
 
 def parse_argv(argv):
 	m = {}
@@ -53,9 +56,9 @@ def parse_argv(argv):
 if __name__ == '__main__':
 	m = parse_argv(sys.argv[1:])
 	_id = 'w' + m['i']
-	log_to_file('w{}.log'.format(_id))
+	log_to_file('{}.log'.format(_id))
 
 	w = Worker(_id)
 
-	# input("Enter to finish...\n")
-	# sys.exit()
+	input("Enter to finish...\n")
+	sys.exit()

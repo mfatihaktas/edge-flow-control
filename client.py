@@ -76,6 +76,7 @@ class Client():
 				turnaround_time=(t - payload.gen_epoch),
 				time_from_c_to_s=(payload.reached_server_epoch - payload.gen_epoch),
 				time_from_s_to_c=(t - payload.departed_server_epoch),
+				time_from_s_to_w_to_s=(payload.departed_server_epoch - payload.reached_server_epoch),
 				result=payload)
 
 		# self.fc_client.update_delay_controller(sid, t)
@@ -132,8 +133,8 @@ class Client():
 		ax = plot.gca()
 		for sid, T_l in sid__T_l_m.items():
 			add_cdf(T_l, ax, sid, next(nice_color)) # drawline_x_l=[1000*self.max_delay]
-		plot.xticks(rotation=70)
 		plot.xscale('log')
+		plot.xticks(rotation=70)
 		plot.ylabel('CDF', fontsize=fontsize)
 		plot.xlabel('Turnaround time (msec)', fontsize=fontsize)
 		# plot.title('f_dropped= {}'.format(f_dropped), fontsize=fontsize)
@@ -145,8 +146,8 @@ class Client():
 		# CDF of inter result times
 		ax = plot.gca()
 		add_cdf(self.inter_result_time_l, ax, '', next(nice_color)) # drawline_x_l=[1000*self.inter_job_gen_time_rv.mean()]
-		plot.xticks(rotation=70)
 		plot.xscale('log')
+		plot.xticks(rotation=70)
 		plot.ylabel('CDF', fontsize=fontsize)
 		plot.xlabel('Inter result arrival time (msec)', fontsize=fontsize)
 		plot.legend(fontsize=fontsize)
@@ -177,11 +178,11 @@ def run(argv):
 	_id = 'c' + m['i']
 	log_to_file('{}.log'.format(_id))
 
-	ES = 0.5 # 0.01
+	ES = 0.1 # 0.01
 	mu = float(1/ES)
 	c = Client(_id, sid_ip_m=m['sid_ip_m'],
 						 num_jobs_to_finish=100,
-						 serv_time_rv=Exp(mu), # DiscreteRV(p_l=[1], v_l=[ES*1000], norm_factor=1000), # TPareto_forAGivenMean(l=ES/2, a=1, mean=ES)
+						 serv_time_rv=DiscreteRV(p_l=[1], v_l=[ES*1000], norm_factor=1000), # Exp(mu), # TPareto_forAGivenMean(l=ES/2, a=1, mean=ES)
 						 size_inBs_rv=DiscreteRV(p_l=[1], v_l=[1]))
 
 	time.sleep(3)

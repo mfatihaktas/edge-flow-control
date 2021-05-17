@@ -5,6 +5,14 @@ import sys, socket, socketserver, getopt, threading, subprocess, json, time
 from msg import *
 from debug_utils import *
 
+MSG_LEN_HEADER_SIZE = 10
+PACKET_SIZE=1024*4 # 1024*10
+
+IP_ETH0 = None # Set below
+PORT_ON_SERVER_TO_LISTEN_FOR_CONN_REQS = 5000
+PORT_ON_SERVER_TO_LISTEN_FOR_RESULTS = 4000
+PORT_ON_WORKER_TO_LISTEN_FOR_JOBS = 5000
+
 # ***************************  Commer utils  *************************** #
 def get_eth0_ip():
 	# search and bind to eth0 ip address
@@ -18,6 +26,8 @@ def get_eth0_ip():
 	intf_eth0_ip = subprocess.getoutput("ip address show dev " + intf_eth0).split()
 	intf_eth0_ip = intf_eth0_ip[intf_eth0_ip.index('inet') + 1].split('/')[0]
 	return intf_eth0_ip
+
+IP_ETH0 = get_eth0_ip()
 
 def msg_len_header(msg_size):
 	msg_size_str = str(msg_size)
@@ -142,7 +152,7 @@ class ResultHandler(socketserver.BaseRequestHandler):
 		log(DEBUG, "recved", msg=msg)
 		check(msg.dst_id == self.server._id, "Msg recved at the wrong destination.")
 
-		self.server.handle_result(result=msg.payload)
+		self.server.handle_result(wip=self.client_address[0], result=msg.payload)
 
 class ResultServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
 	def __init__(self, _id, server_addr, handle_result):
@@ -159,7 +169,7 @@ class ConnReqHandler(socketserver.BaseRequestHandler):
 		log(DEBUG, "recved", msg=msg)
 		check(msg.dst_id == self.server._id, "Msg recved at the wrong destination.")
 
-		self.server.handle_conn_req(cid=msg.src_id, cip=self.client_address[0], result=msg.payload, sock=self.request)
+		self.server.handle_conn_req(cid=msg.src_id, cip=self.client_address[0], conn_req=msg.payload, sock=self.request)
 
 class ConnServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
 	def __init__(self, _id, server_addr, handle_conn_req):
@@ -170,7 +180,7 @@ class ConnServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
 		log(DEBUG, "constructed", server_addr=server_addr)
 
 class CommerOnServer():
-	def __init__(self, _id, handle_msg):
+	def __init__(self, _id, handle_msg, handle_result):
 		self._id = _id
 		self.handle_msg = handle_msg
 
@@ -180,7 +190,7 @@ class CommerOnServer():
 		self.conn_req_server_thread = threading.Thread(target=self.conn_req_server.serve_forever, daemon=True)
 		self.conn_req_server_thread.start()
 
-		self.result_server = ResultServer(self._id, (IP_ETH0, PORT_ON_SERVER_TO_LISTEN_FOR_RESULTS), self.handle_result)
+		self.result_server = ResultServer(self._id, (IP_ETH0, PORT_ON_SERVER_TO_LISTEN_FOR_RESULTS), handle_result)
 		self.result_server_thread = threading.Thread(target=self.result_server.serve_forever, daemon=True)
 		self.result_server_thread.start()
 
@@ -211,13 +221,6 @@ class CommerOnServer():
 
 		log(DEBUG, "done.")
 
-	def handle_result(self, result):
-		log(DEBUG, "started;", result=result)
-		check(result.cid in self.cid_sock_m, "Result recved for an unsubscribed client.")
-
-		self.send_msg(result.cid, msg=Msg(_id=result._id, payload=result))
-		log(DEBUG, "done.")
-
 	def start_listening_client(self, cid, port):
 		log(DEBUG, "started;", cid=cid, port=port)
 
@@ -237,17 +240,11 @@ class CommerOnServer():
 		msg.dst_id = cid
 		send_msg(self.cid_sock_m[cid], msg, to_addr=self.cid_addr_m[cid])
 
-	def send_job_recv_result(self, wip, job):
+	def send_job_to_worker(self, wip, job):
 		# TODO: Eliminate the need to connect to worker each time by using WebSocket's.
-		## Send job
 		sock = connect(wip, PORT_ON_WORKER_TO_LISTEN_FOR_JOBS)
-		msg = Msg(job._id, payload=job)
-		send_msg(sock, msg)
-
-		## Recv reply
-		msg = recv_msg(sock)
-
-		return msg.payload
+		send_msg(sock, msg=Msg(job._id, payload=job, src_id=self._id))
+		log(DEBUG, "sent", wip=wip, job=job)
 
 # ***************************  CommerOnClient  *************************** #
 class CommerOnClient():
@@ -323,7 +320,7 @@ class JobReqHandler(socketserver.BaseRequestHandler):
 		msg = recv_msg(sock=self.request)
 		sip = self.client_address[0]
 		log(DEBUG, "recved", msg=msg)
-		self.server.handle_job_req(sip=self.client_address[0], job=msg.payload)
+		self.server.handle_job_req(sid=msg.src_id, sip=self.client_address[0], job=msg.payload)
 
 class JobReqServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
 	def __init__(self, _id, server_addr, handle_job_req):
@@ -332,16 +329,18 @@ class JobReqServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
 		self.handle_job_req = handle_job_req
 
 class CommerOnWorker():
-	def __init__(self, _id, req_job_q):
+	def __init__(self, _id, job_q):
 		self._id = _id
-		# self.handle_job = handle_job
-		self.req_job_q = req_job_q
+		self.job_q = job_q
 
 		self.job_req_server = JobReqServer(self._id, (IP_ETH0, PORT_ON_WORKER_TO_LISTEN_FOR_JOBS), self.handle_job_req)
 		self.job_req_server_thread = threading.Thread(target=self.job_req_server.serve_forever, daemon=True)
 		self.job_req_server_thread.start()
 		log(DEBUG, "Started JobReqServer;", ip=IP_ETH0, port=PORT_ON_WORKER_TO_LISTEN_FOR_JOBS)
 
+		## Worker can be attached to one server (for now)
+		self.sid = None
+		self.sip = None
 		log(DEBUG, "constructed;", self=self)
 
 	def __repr__(self):
@@ -352,14 +351,14 @@ class CommerOnWorker():
 		self.job_req_server_thread.shutdown()
 		log(DEBUG, "done.")
 
-	def handle_job_req(self, sip, job):
-		log(DEBUG, "started;", job=job
-		self.sip_job_q.put((sip, job))
+	def handle_job_req(self, sid, sip, job):
+		log(DEBUG, "started;", job=job)
+		if self.sid is None:
+			self.sid, self.sip = sid, sip
+		self.job_q.put(job)
 		log(DEBUG, "done.")
 
-	def send_result_to_server(self, sip, job):
-		result = result_from_job(job)
-		# result.size_inBs = ?
-		sock = connect(sip, PORT_ON_SERVER_TO_LISTEN_FOR_RESULTS)
-		send_msg(sock, msg=Msg(_id=result._id, payload=result, to_addr=(sip, PORT_ON_SERVER_TO_LISTEN_FOR_RESULTS)))
+	def send_result_to_server(self, result):
+		sock = connect(self.sip, PORT_ON_SERVER_TO_LISTEN_FOR_RESULTS)
+		send_msg(sock, msg=Msg(_id=result._id, payload=result, src_id=self._id, dst_id=self.sid), to_addr=(self.sip, PORT_ON_SERVER_TO_LISTEN_FOR_RESULTS))
 		log(DEBUG, "sent", result=result)

@@ -39,20 +39,18 @@ elif [ $1  = 'save' ]; then
 elif [ $1 = 'lsi' ]; then
   $DOCKER images
 elif [ $1 = 'commit' ]; then
-  $DOCKER commit $CONT_NAME $IMG_NAME
+  $DOCKER commit $CONT_NAME $NEW_CONT_NAME
 elif [ $1  = 'tag' ]; then
   NEW_CONT_NAME=$3
   $DOCKER tag $CONT_NAME $NEW_CONT_NAME
 elif [ $1  = 'rm' ]; then
   $DOCKER rm $CONT_NAME
-elif [ $1 = 'push' ]; then
-  $DOCKER push $IMG_NAME
-elif [ $1 = 'pull' ]; then
-  $DOCKER pull $IMG_NAME
 elif [ $1 = 'rmi' ]; then
   echo "Will remove the image: $IMG_NAME. Are you sure?"
   read answer
   $DOCKER image rm $IMG_NAME
+elif [ $1 = 'pull' ]; then
+  $DOCKER pull $CONT_NAME
 else
   echo "Argument did not match !"
 fi

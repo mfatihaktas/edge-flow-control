@@ -11,12 +11,12 @@ elif [ $1 = 'c' ]; then
   [ -z "$2" ] && { echo "Which client [0, *] ?"; exit 1; }
   $PY -u client.py --i=$2 --sid_ip_m='{"s0": "10.0.1.0"}'
 elif [ $1 = 's' ]; then
-  rm *.png *.log
   pkill -f client.py
   pkill -f server.py
   [ -z "$2" ] && { echo "Which server [0, *] ?"; exit 1; }
-  $PY -u server.py --i=$2 --wip_l='["10.0.2.0"]'
+  $PY -u server.py --i=$2 --wip_l='["10.0.2.0"]' # 'null'
 elif [ $1 = 'w' ]; then
+  # rm *.png *.log
   [ -z "$2" ] && { echo "Which worker [0, *] ?"; exit 1; }
   $PY -u worker.py --i=$2
 elif [ $1 = 'tc' ]; then

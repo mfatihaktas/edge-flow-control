@@ -21,11 +21,12 @@ class MyTopo(Topo):
 
 		sw0 = self.addSwitch('sw0')
 
-		link_opts = dict(bw=1000, delay='1ms', loss=0, max_queue_size=1000, use_htb=True)
-		self.addLink(w0, sw0, **link_opts)
-		self.addLink(s0, sw0, **link_opts)
-		self.addLink(c0, sw0, **link_opts)
-		self.addLink(c1, sw0, **link_opts)
+		cluster_link_opts = dict(bw=1000, delay='0.1ms', loss=0, max_queue_size=1000, use_htb=True)
+		edge_link_opts = dict(bw=1000, delay='10ms', loss=0, max_queue_size=1000, use_htb=True)
+		self.addLink(w0, sw0, **cluster_link_opts)
+		self.addLink(s0, sw0, **cluster_link_opts)
+		self.addLink(c0, sw0, **edge_link_opts)
+		self.addLink(c1, sw0, **edge_link_opts)
 
 def run_workers(w_l):
 	popens = {}
@@ -59,6 +60,6 @@ if __name__ == '__main__':
 	c1.setDefaultRoute(intf='c1-eth0')
 
 	net.start()
-	# run_workers([w0])
+	run_workers([w0])
 	CLI(net)
 	net.stop()

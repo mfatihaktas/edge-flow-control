@@ -3,29 +3,32 @@ import threading, time, sys, getopt, json, queue, nslookup
 from config import *
 from debug_utils import *
 from commer import CommerOnServer
+from msg import Msg
 from flow_control import FlowControlServer
 
-def get_wip_l(dns_sip="1.1.1.1"):
-	query = nslookup.Nslookup(dns_servers=[dns_sip])
+def get_wip_l(domain):
+	query = nslookup.Nslookup()
 	record = query.dns_lookup(domain)
 	log(DEBUG, "", dns_response=record.response_full, dns_answer=record.answer)
 
-	record = query.soa_lookup(domain)
-	log(DEBUG, "", soa_response=record.response_full, soa_answer=record.answer)
+	# record = query.soa_lookup(domain)
+	# log(DEBUG, "", soa_response=record.response_full, soa_answer=record.answer)
+
+	return record.answer
 
 class Server():
-	def __init__(self, _id, wip_l=None, max_num_jobs_per_worker=1):
+	def __init__(self, _id, wip_l=None, worker_service_domain='edge-server', max_num_jobs_per_worker=1):
 		self._id = _id
-		self.wip_l = wip_l if wip_l is None else get_wip_l()
+		self.wip_l = wip_l if wip_l is not None else get_wip_l(worker_service_domain)
 
-		self.commer = CommerOnServer(_id, self.handle_msg)
+		self.commer = CommerOnServer(_id, self.handle_msg, self.handle_result)
 
 		self.fc_server = FlowControlServer()
 
-		self.wid_q = queue.Queue()
-		for i in range(len(wip_l)):
+		self.wip_q = queue.Queue()
+		for wip in wip_l:
 			for _ in range(max_num_jobs_per_worker):
-				self.wid_q.put(i)
+				self.wip_q.put(wip)
 
 		self.wait_for_ajob = threading.Condition()
 		self.is_waiting_for_ajob = False
@@ -66,24 +69,21 @@ class Server():
 				continue
 
 			if job.is_job():
-				wid = self.wid_q.get(block=True)
-				t = threading.Thread(target=self.send_job_recv_result_return_to_client, args=(wid, job), daemon=True)
-				t.start()
+				wip = self.wip_q.get(block=True)
+				self.commer.send_job_to_worker(wip, job)
 			elif job.is_probe():
 				msg = Msg(job._id, payload=job) # return the probe back to the client
 				self.commer.send_msg(job.cid, msg)
 
-	def send_job_recv_result_return_to_client(self, wid, job):
-		log(DEBUG, "started;", wid=wid, job_id=job._id)
-		result = self.commer.send_job_recv_result(self.wip_l[wid], job)
+	def handle_result(self, wip, result):
+		log(DEBUG, "started;", wip=wip, result_id=result._id)
+		self.wip_q.put(wip)
 
-		result.serv_time = time.time() - job.reached_server_epoch
+		result.serv_time = time.time() - result.reached_server_epoch
 		result.departed_server_epoch = time.time()
-		msg = Msg(job._id, payload=result, dst_id=job.cid)
-		self.commer.send_msg(job.cid, msg)
+		self.commer.send_msg(result.cid, msg=Msg(_id=result._id, payload=result))
 
-		self.wid_q.put(wid)
-		log(DEBUG, "done.", wid=wid, job_id=job._id)
+		log(DEBUG, "done.", wip=wip, result_id=result._id, serv_time=result.serv_time)
 
 def parse_argv(argv):
 	m = {}
@@ -99,7 +99,7 @@ def parse_argv(argv):
 			m['wip_l'] = json.loads(arg)
 		else:
 			assert_("Unexpected opt= {}, arg= {}".format(opt, arg))
-
+	log(DEBUG, "", m=m)
 	return m
 
 def run(argv):
