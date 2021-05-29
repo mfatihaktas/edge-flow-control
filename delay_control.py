@@ -71,7 +71,7 @@ class InterJobGenTimeController():
 
 	def run(self):
 		while self.on:
-			if self.inter_serv_time is None:
+			if self.inter_serv_time is None and self.num_jobs_on_fly > 4:
 				# time.sleep(1)
 				time.sleep(0.1)
 			else:
