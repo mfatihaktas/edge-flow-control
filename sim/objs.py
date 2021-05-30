@@ -1,4 +1,5 @@
 from flow_control import *
+from debug_utils import *
 
 class Request():
 	def __init__(self, _id, src_id, dst_id, serv_time):
@@ -7,6 +8,7 @@ class Request():
 		self.dst_id = dst_id
 		self.serv_time = serv_time
 
+		self.epoch_departed_client = None
 		self.epoch_arrived_net = None
 		self.epoch_arrived_server = None
 		self.epoch_departed_server = None
@@ -15,11 +17,12 @@ class Request():
 		return "Request(id= {}, src_id= {}, dst_id= {}, serv_time= {})".format(self._id, self.src_id, self.dst_id, self.serv_time)
 
 class Client():
-	def __init__(self, _id, env, serv_time_rv, num_reqs, out=None):
+	def __init__(self, _id, env, serv_time_rv, num_req_to_recv, sid, out=None):
 		self._id = _id
 		self.env = env
 		self.serv_time_rv = serv_time_rv
-		self.num_reqs = num_reqs
+		self.num_req_to_recv = num_req_to_recv
+		self.sid = sid
 		self.out = out
 
 		self.token_s = simpy.Store(env)
@@ -32,14 +35,28 @@ class Client():
 		self.num_req_sent = 0
 		self.num_req_recved = 0
 
+		self.last_time_result_recved = env.now
+		self.inter_result_time_l = []
+		self.response_time_l = []
+
 	def __repr__(self):
 		return "Client(_id= {})".format(self._id)
+
+	def put(self, req):
+		slog(DEBUG, self.env, self, "recved", req=req)
+		self.result_s.put(req)
 
 	def run_recv(self):
 		while True:
 			result = yield self.result_s.get()
+
+			self.inter_result_time_l.append(self.env.now - self.last_time_result_recved)
+			self.last_time_result_recved = self.env.now
+
+			self.response_time_l.append(self.env.now - result.epoch_departed_client)
+
 			self.num_req_recved += 1
-			if self.num_req_recved == self.num_reqs:
+			if self.num_req_recved == self.num_req_to_recv:
 				slog(DEBUG, self.env, self, "recved the last result")
 				return
 			self.fc.update(result)
@@ -48,12 +65,11 @@ class Client():
 		while True:
 			yield self.token_s.get()
 
-			req = Request(_id=self.num_req_sent, cid=self._id, serv_time=self.serv_time_rv.sample())
+			req = Request(_id=self.num_req_sent, src_id=self._id, dst_id=self.sid, serv_time=self.serv_time_rv.sample())
+			slog(DEBUG, self.env, self, "sending", req=req)
+			req.epoch_departed_client = self.env.now
 			self.out.put(req)
 			self.num_req_sent += 1
-
-			self.out.put(job)
-			slog(DEBUG, self.env, self, "sent", req=req)
 
 class Server():
 	def __init__(self, _id, env, out=None):
@@ -80,6 +96,7 @@ class Server():
 			slog(DEBUG, self.env, self, "finished serving", req=req)
 
 			# TODO: might update serv_time with a slowdown factor
+			req.src_id, req.dst_id = req.dst_id, req.src_id
 			self.out.put(req)
 
 class Net():
@@ -94,12 +111,15 @@ class Net():
 
 		self.req_s = simpy.Store(env)
 
+	def __repr__(self):
+		return "Net(id= {})".format(self._id)
+
 	def put(self, req):
 		slog(DEBUG, self.env, self, "recved", req=req)
 		req.epoch_arrived_net = self.env.now
 		self.req_s.put(req)
 
-class Net_wConstantEndToEndDelay(Net):
+class Net_wConstantDelay(Net):
 	def __init__(self, _id, env, cs_l, delay):
 		super().__init__(_id, env, cs_l)
 		self.delay = delay
@@ -110,7 +130,7 @@ class Net_wConstantEndToEndDelay(Net):
 		while True:
 			req = yield self.req_s.get()
 
-			t = self.env.now - req.epoch_arrived_net
+			t = self.delay - (self.env.now - req.epoch_arrived_net)
 			if t > 0:
 				slog(DEBUG, self.env, self, "delaying", req=req, t=t)
 				yield self.env.timeout(t)

@@ -47,9 +47,5 @@ def assert_(_msg_: str, **kwargs):
 	raise AssertionError()
 
 # ###############################  Sim log  ############################### #
-SLOG_LEVEL = 3
-
 def slog(level: int, env, caller: str, msg: str, **kwargs):
-	if SLOG_LEVEL <= level:
-		level_log_m[level]("t: {:.2f}] {}: {}\n{}".format(env.now, caller, msg, pstr(**kwargs)), extra=get_extra())
-		blog(**kwargs)
+	level_log_m[level]("t: {:.2f}] {}: {}\n{}".format(env.now, caller, msg, pstr(**kwargs)), extra=get_extra())
