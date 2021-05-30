@@ -19,7 +19,7 @@ def plot_client(c):
 	plot.xticks(rotation=70)
 	plot.ylabel('CDF', fontsize=fontsize)
 	plot.xlabel('Response time', fontsize=fontsize)
-	plot.legend(fontsize=fontsize)
+	# plot.legend(fontsize=fontsize)
 	plot.gcf().set_size_inches(6, 4)
 	plot.savefig("plot_cdf_T.png", bbox_inches='tight')
 	plot.gcf().clear()
@@ -31,9 +31,26 @@ def plot_client(c):
 	plot.xticks(rotation=70)
 	plot.ylabel('CDF', fontsize=fontsize)
 	plot.xlabel('Inter result arrival time', fontsize=fontsize)
-	plot.legend(fontsize=fontsize)
 	plot.gcf().set_size_inches(6, 4)
 	plot.savefig("plot_cdf_interResultTime.png", bbox_inches='tight')
+	plot.gcf().clear()
+
+	log(DEBUG, "done.")
+
+def plot_server(s):
+	x_l, y_l = [], []
+	for (epoch, qlen) in s.epoch_qlen_l:
+		x_l.append(epoch)
+		y_l.append(qlen)
+
+	plot.plot(x_l, y_l, color=next(nice_color), marker='_', linestyle='solid', lw=2, mew=2, ms=2)
+
+	fontsize = 14
+	plot.ylabel('Server queue length', fontsize=fontsize)
+	plot.xlabel('Time', fontsize=fontsize)
+	plot.gcf().set_size_inches(6, 4)
+	plot.savefig("plot_server_qlen.png", bbox_inches='tight')
+	plot.gcf().clear()
 
 	log(DEBUG, "done.")
 
@@ -41,14 +58,16 @@ def sim_wConstantEndToEndDelay():
 	env = simpy.Environment()
 
 	serv_time_rv = DiscreteRV(p_l=[1], v_l=[1])
+	slowdown_rv = Dolly()
 	sid = 's'
-	s = Server(sid, env)
+	s = Server(sid, env, slowdown_rv)
 	c = Client('c', env, serv_time_rv, num_req_to_recv=100, sid=sid)
 	n = Net_wConstantDelay('n', env, [s, c], delay=2*serv_time_rv.mean())
 	env.run(until=c.wait)
 	# env.run(until=10)
 
 	plot_client(c)
+	plot_server(s)
 
 if __name__ == '__main__':
 	sim_wConstantEndToEndDelay()

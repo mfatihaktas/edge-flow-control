@@ -72,13 +72,17 @@ class Client():
 			self.num_req_sent += 1
 
 class Server():
-	def __init__(self, _id, env, out=None):
+	def __init__(self, _id, env, slowdown_rv, out=None):
 		self._id = _id
 		self.env = env
+		self.slowdown_rv = slowdown_rv
 		self.out = out
 
 		self.req_s = simpy.Store(env)
 		self.action = env.process(self.run())
+		self.req_in_service = None
+
+		self.epoch_qlen_l = []
 
 	def __repr__(self):
 		return "Server(_id= {})".format(self._id)
@@ -87,17 +91,23 @@ class Server():
 		slog(DEBUG, self.env, self, "recved", req=req)
 		self.req_s.put(req)
 
+		self.epoch_qlen_l.append((self.env.now, len(self.req_s.items) + int(self.req_in_service == None)))
+
 	def run(self):
 		while True:
 			req = yield self.req_s.get()
+			self.req_in_service = req
 
-			slog(DEBUG, self.env, self, "started serving", req=req)
-			yield self.env.timeout(req.serv_time)
+			s = self.slowdown_rv.sample()
+			slog(DEBUG, self.env, self, "started serving", slowdown=s, serv_time=req.serv_time)
+			yield self.env.timeout(s * req.serv_time)
 			slog(DEBUG, self.env, self, "finished serving", req=req)
 
-			# TODO: might update serv_time with a slowdown factor
 			req.src_id, req.dst_id = req.dst_id, req.src_id
 			self.out.put(req)
+			self.req_in_service = None
+
+			self.epoch_qlen_l.append((self.env.now, len(self.req_s.items)))
 
 class Net():
 	def __init__(self, _id, env, cs_l):
