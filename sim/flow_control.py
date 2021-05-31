@@ -22,7 +22,10 @@ class FlowControl():
 			self.inter_req_time = result.serv_time
 			self.syncer.put(1)
 		else:
-			self.inter_req_time = (1 - self.coeff) * self.inter_req_time + self.coeff * result.serv_time
+			if result.serv_time > self.inter_req_time:
+				self.inter_req_time *= 2
+			else:
+				self.inter_req_time = (1 - self.coeff) * self.inter_req_time + self.coeff * result.serv_time
 		log(DEBUG, "done", inter_req_time=self.inter_req_time, serv_time=result.serv_time)
 
 	def run(self):
@@ -31,6 +34,7 @@ class FlowControl():
 				slog(DEBUG, self.env, self, "waiting for first result")
 				self.token_s.put(1)
 				yield self.syncer.get()
+				self.token_s.put(1)
 			else:
 				slog(DEBUG, self.env, self, "waiting", t=self.inter_req_time)
 				yield self.env.timeout(self.inter_req_time)
