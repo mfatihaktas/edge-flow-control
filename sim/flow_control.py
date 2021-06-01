@@ -8,6 +8,10 @@ class FlowControl():
 		self.env = env
 		self.token_s = token_s
 
+class FlowControl_ExpAvg_MD(FlowControl): # Exponential Averaging, Multiplicative Decrease
+	def __init__(self, env, token_s):
+		super().__init__(env, token_s)
+
 		self.syncer = simpy.Store(env)
 		self.inter_req_time = None
 		self.coeff = 0.5
@@ -15,7 +19,7 @@ class FlowControl():
 		self.action = env.process(self.run())
 
 	def __repr__(self):
-		return "FlowControl(coeff= {})".format(self.coeff)
+		return "FlowControl_ExpAvg_MD(coeff= {})".format(self.coeff)
 
 	def update(self, result):
 		cluster_time = result.epoch_departed_cluster - result.epoch_arrived_cluster # result.serv_time
@@ -42,10 +46,10 @@ class FlowControl():
 				yield self.env.timeout(self.inter_req_time)
 				self.token_s.put(1)
 
-class FlowControl_AvgServTime():
-	def __init__(self, env, token_s):
-		self.env = env
-		self.token_s = token_s
+class FlowControl_GGn(FlowControl):
+	def __init__(self, env, token_s, avg_load_target):
+		super().__init__(env, token_s)
+		self.avg_load_target = avg_load_target
 
 		self.syncer = simpy.Store(env)
 		self.inter_req_time = None
@@ -56,7 +60,7 @@ class FlowControl_AvgServTime():
 		self.action = env.process(self.run())
 
 	def __repr__(self):
-		return "FlowControl_AvgServTime"
+		return "FlowControl_GGn"
 
 	def update(self, result):
 		log(DEBUG, "started", inter_req_time=self.inter_req_time, serv_time=result.serv_time)
@@ -67,7 +71,7 @@ class FlowControl_AvgServTime():
 		self.result_q.append(result)
 
 		should_sync = self.inter_req_time is None
-		self.inter_req_time = self.cum_serv_time / len(self.result_q) / result.num_server_fair_share / 0.8
+		self.inter_req_time = self.cum_serv_time / len(self.result_q) / result.num_server_fair_share / self.avg_load_target
 
 		if should_sync:
 			slog(DEBUG, self.env, self, "recved first result")

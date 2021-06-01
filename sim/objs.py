@@ -32,7 +32,7 @@ class Client():
 		self.out = out
 
 		self.token_s = simpy.Store(env)
-		self.fc = FlowControl_AvgServTime(env, self.token_s)
+		self.fc = FlowControl_GGn(env, self.token_s, avg_load_target=0.8)
 
 		self.result_s = simpy.Store(env)
 		self.wait = env.process(self.run_recv())
