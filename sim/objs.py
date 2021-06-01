@@ -17,6 +17,8 @@ class Request():
 		self.epoch_departed_cluster = None
 		self.epoch_arrived_client = None
 
+		self.num_server_fair_share = None
+
 	def __repr__(self):
 		return "Request(id= {}, src_id= {}, dst_id= {}, serv_time= {})".format(self._id, self.src_id, self.dst_id, self.serv_time)
 
@@ -30,7 +32,7 @@ class Client():
 		self.out = out
 
 		self.token_s = simpy.Store(env)
-		self.fc = FlowControl(env, self.token_s)
+		self.fc = FlowControl_AvgServTime(env, self.token_s)
 
 		self.result_s = simpy.Store(env)
 		self.wait = env.process(self.run_recv())
@@ -93,6 +95,9 @@ class Server():
 		slog(DEBUG, self.env, self, "recved", req=req)
 		self.req_s.put(req)
 
+	def num_reqs(self):
+		return len(self.req_s.items) + int(self.is_serving)
+
 	def run(self):
 		while True:
 			req = yield self.req_s.get()
@@ -106,8 +111,8 @@ class Server():
 			slog(DEBUG, self.env, self, "finished serving", req_id=req._id)
 
 			req.serv_time = t
-			self.out.put_result(self._id, req)
 			self.is_serving = False
+			self.out.put_result(self._id, req)
 
 class Cluster():
 	def __init__(self, _id, env, slowdown_rv, num_server, out=None):
@@ -143,7 +148,10 @@ class Cluster():
 			log(DEBUG, "reged", cid=cid)
 
 	def num_reqs(self):
-		return sum(len(q) for _, q in self.cid_q_m.items()) + sum(int(s.is_serving) for s in self.server_l)
+		return sum(len(q) for _, q in self.cid_q_m.items()) + sum(s.num_reqs() for s in self.server_l)
+
+	def record_num_reqs(self):
+		self.epoch_nreqs_l.append((self.env.now, self.num_reqs()))
 
 	def put(self, req):
 		slog(DEBUG, self.env, self, "recved", req=req)
@@ -152,8 +160,6 @@ class Cluster():
 
 		if self.waiting_for_req:
 			self.syncer_s.put(1)
-
-		self.epoch_nreqs_l.append((self.env.now, self.num_reqs()))
 
 	def put_result(self, sid, result):
 		slog(DEBUG, self.env, self, "recved", result=result)
@@ -183,15 +189,17 @@ class Cluster():
 				check(req is not None, "A req must have been recved")
 
 			self.server_l[sid].put(req)
+			self.record_num_reqs()
 
 	def run_handle_results(self):
 		while True:
 			result = yield self.result_s.get()
 			result.src_id, result.dst_id = result.dst_id, result.src_id
 			result.epoch_departed_cluster = self.env.now
+			result.num_server_fair_share = self.num_server / len(self.cid_q_m)
 			self.out.put(result)
 
-			self.epoch_nreqs_l.append((self.env.now, self.num_reqs()))
+			self.record_num_reqs()
 
 class Net():
 	def __init__(self, _id, env, cs_l):
