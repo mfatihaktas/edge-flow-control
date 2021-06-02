@@ -1,3 +1,4 @@
+import random
 from collections import deque
 
 from flow_control import *
@@ -70,6 +71,7 @@ class Client():
 	def run_send(self):
 		while True:
 			yield self.token_s.get()
+			yield self.env.timeout(random.uniform(0, 1) / 100)
 
 			req = Request(_id=self.num_req_sent, src_id=self._id, dst_id=self.cl_id, serv_time=self.serv_time_rv.sample())
 			slog(DEBUG, self.env, self, "sending", req=req)
@@ -156,10 +158,14 @@ class Cluster():
 	def put(self, req):
 		slog(DEBUG, self.env, self, "recved", req=req)
 		req.epoch_arrived_cluster = self.env.now
+
+		if req.src_id not in self.cid_q_m:
+			self.reg(req.src_id)
 		self.cid_q_m[req.src_id].append(req)
 
 		if self.waiting_for_req:
 			self.syncer_s.put(1)
+			# yield self.env.timeout(0.0001)
 
 	def put_result(self, sid, result):
 		slog(DEBUG, self.env, self, "recved", result=result)

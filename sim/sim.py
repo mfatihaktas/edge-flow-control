@@ -24,7 +24,7 @@ def plot_client(c):
 	plot.xlabel('x', fontsize=fontsize)
 	# plot.legend(fontsize=fontsize)
 	plot.gcf().set_size_inches(6, 4)
-	plot.savefig("plot_cdf_T_ns_{}.png".format(NUM_SERVER), bbox_inches='tight')
+	plot.savefig("plot_{}_cdf_T_ns_{}.png".format(c._id, NUM_SERVER), bbox_inches='tight')
 	plot.gcf().clear()
 
 	## CDF of queueing times
@@ -35,21 +35,21 @@ def plot_client(c):
 	plot.ylabel('Pr{Queueing time < x}', fontsize=fontsize)
 	plot.xlabel('x', fontsize=fontsize)
 	plot.gcf().set_size_inches(6, 4)
-	plot.savefig("plot_cdf_Q_ns_{}.png".format(NUM_SERVER), bbox_inches='tight')
+	plot.savefig("plot_{}_cdf_Q_ns_{}.png".format(c._id, NUM_SERVER), bbox_inches='tight')
 	plot.gcf().clear()
 
 	## CDF of inter result times
 	ax = plot.gca()
 	add_cdf(c.inter_result_time_l, ax, '', next(nice_color)) # drawline_x_l=[1000*self.inter_job_gen_time_rv.mean()]
-	plot.xscale('log')
 	plot.xticks(rotation=70)
+	plot.xscale('log')
 	plot.ylabel('Pr{Inter result arrival time < x}', fontsize=fontsize)
 	plot.xlabel('x', fontsize=fontsize)
 	plot.gcf().set_size_inches(6, 4)
-	plot.savefig("plot_cdf_interResultTime_ns_{}.png".format(NUM_SERVER), bbox_inches='tight')
+	plot.savefig("plot_{}_cdf_interResultTime_ns_{}.png".format(c._id, NUM_SERVER), bbox_inches='tight')
 	plot.gcf().clear()
 
-	log(DEBUG, "done.")
+	log(DEBUG, "done", cid=c._id)
 
 def plot_cluster(cl):
 	x_l, y_l = [], []
@@ -75,18 +75,15 @@ def plot_cluster(cl):
 	plot.savefig("plot_cluster_nreqs_ns_{}.png".format(NUM_SERVER), bbox_inches='tight')
 	plot.gcf().clear()
 
-	log(DEBUG, "done.")
+	log(DEBUG, "done", cl_id=cl._id)
 
-def sim_wConstantEndToEndDelay():
-	env = simpy.Environment()
-
+def sim_wSingleClient():
 	serv_time_rv = DiscreteRV(p_l=[1], v_l=[1])
 	slowdown_rv = Dolly() # DiscreteRV(p_l=[0.9, 0.1], v_l=[1, 5]) # DiscreteRV(p_l=[1], v_l=[1])
-	cl_id = 'cl'
-	cl = Cluster(cl_id, env, slowdown_rv, NUM_SERVER)
-	cid = 'c'
-	c = Client(cid, env, cl_id, serv_time_rv, num_req_to_recv=1000*NUM_SERVER)
-	cl.reg(cid)
+
+	env = simpy.Environment()
+	cl = Cluster('cl', env, slowdown_rv, NUM_SERVER)
+	c = Client('c', env, 'cl', serv_time_rv, num_req_to_recv=1000*NUM_SERVER)
 	n = Net_wConstantDelay('n', env, [cl, c], delay=0.1) # 0.1 # 2*serv_time_rv.mean()
 	env.run(until=c.wait)
 	# env.run(until=10)
@@ -94,5 +91,30 @@ def sim_wConstantEndToEndDelay():
 	plot_client(c)
 	plot_cluster(cl)
 
+	log(DEBUG, "done")
+
+def sim_wMultiClient(num_client):
+	serv_time_rv = DiscreteRV(p_l=[1], v_l=[1])
+	slowdown_rv = Dolly() # DiscreteRV(p_l=[1], v_l=[1]) # DiscreteRV(p_l=[0.9, 0.1], v_l=[1, 5])
+
+	env = simpy.Environment()
+	cl = Cluster('cl', env, slowdown_rv, NUM_SERVER)
+	c_l = []
+	for i in range(num_client):
+		cid= 'c{}'.format(i)
+		c = Client(cid, env, 'cl', serv_time_rv, num_req_to_recv=1000*NUM_SERVER)
+		c_l.append(c)
+
+	n = Net_wConstantDelay('n', env, [cl, *c_l], delay=0.1)
+	env.run(until=c_l[0].wait)
+	# env.run(until=10)
+
+	for i in range(num_client):
+		plot_client(c_l[i])
+	plot_cluster(cl)
+
+	log(DEBUG, "done")
+
 if __name__ == '__main__':
-	sim_wConstantEndToEndDelay()
+	# sim_wSingleClient()
+	sim_wMultiClient(num_client=4)
