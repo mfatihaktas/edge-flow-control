@@ -1,4 +1,4 @@
-import os, sys
+import os, sys, collections
 current_dir = os.path.dirname(os.path.realpath(__file__))
 parent_dir = os.path.dirname(current_dir)
 sys.path.append(parent_dir)
@@ -24,7 +24,7 @@ def plot_client(c):
 	plot.xlabel('x', fontsize=fontsize)
 	# plot.legend(fontsize=fontsize)
 	plot.gcf().set_size_inches(6, 4)
-	plot.savefig("plot_{}_cdf_T_ns_{}.png".format(c._id, NUM_SERVER), bbox_inches='tight')
+	plot.savefig("plot_{}_ns{}_cdf_T.png".format(c._id, NUM_SERVER), bbox_inches='tight')
 	plot.gcf().clear()
 
 	## CDF of queueing times
@@ -35,7 +35,7 @@ def plot_client(c):
 	plot.ylabel('Pr{Queueing time < x}', fontsize=fontsize)
 	plot.xlabel('x', fontsize=fontsize)
 	plot.gcf().set_size_inches(6, 4)
-	plot.savefig("plot_{}_cdf_Q_ns_{}.png".format(c._id, NUM_SERVER), bbox_inches='tight')
+	plot.savefig("plot_{}_ns{}_cdf_Q.png".format(c._id, NUM_SERVER), bbox_inches='tight')
 	plot.gcf().clear()
 
 	## CDF of inter result times
@@ -46,33 +46,50 @@ def plot_client(c):
 	plot.ylabel('Pr{Inter result arrival time < x}', fontsize=fontsize)
 	plot.xlabel('x', fontsize=fontsize)
 	plot.gcf().set_size_inches(6, 4)
-	plot.savefig("plot_{}_cdf_interResultTime_ns_{}.png".format(c._id, NUM_SERVER), bbox_inches='tight')
+	plot.savefig("plot_{}_ns{}_cdf_interResultTime.png".format(c._id, NUM_SERVER), bbox_inches='tight')
 	plot.gcf().clear()
 
 	log(DEBUG, "done", cid=c._id)
 
 def plot_cluster(cl):
-	x_l, y_l = [], []
+	epoch_l, nreq_l = [], []
 	epoch_prev, nreqs_prev = None, None
-	cum_busy_servers = 0
+	cum_weighted_num_busy_servers = 0
 	for (epoch, nreqs) in cl.epoch_nreqs_l:
 		if epoch_prev is not None:
-			cum_busy_servers += (epoch - epoch_prev) * min(NUM_SERVER, nreqs_prev)
+			cum_weighted_num_busy_servers += (epoch - epoch_prev) * min(NUM_SERVER, nreqs_prev)
 		epoch_prev = epoch
 		nreqs_prev = nreqs
-		x_l.append(epoch)
-		y_l.append(nreqs)
-	avg_load = cum_busy_servers / epoch_prev / NUM_SERVER
 
-	plot.plot(x_l, y_l, color=next(nice_color), marker='_', linestyle='solid', lw=2, mew=2, ms=2)
-	# plot.plot(x_l, y_l, color=next(nice_color), marker='*', linestyle='None', lw=2, mew=2, ms=2)
+		epoch_l.append(epoch)
+		nreq_l.append(nreqs)
+	max_time = epoch_prev
+	avg_load = cum_weighted_num_busy_servers / max_time / NUM_SERVER
 
 	fontsize = 14
+	## Number of requests over time
+	plot.plot(epoch_l, nreq_l, color=next(nice_color), marker='_', linestyle='solid', lw=2, mew=2, ms=2)
+	# plot.plot(epoch_l, nreq_l, color=next(nice_color), marker='*', linestyle='None', lw=2, mew=2, ms=2)
 	plot.ylabel('Number of requests in the cluster', fontsize=fontsize)
 	plot.xlabel('Time', fontsize=fontsize)
 	plot.title('Number of servers= {}, Avg load= {}'.format(cl.num_server, round(avg_load, 2)))
 	plot.gcf().set_size_inches(10*2, 4*2)
-	plot.savefig("plot_cluster_nreqs_ns_{}.png".format(NUM_SERVER), bbox_inches='tight')
+	plot.savefig("plot_ns{}_cluster_nreqs.png".format(NUM_SERVER), bbox_inches='tight')
+	plot.gcf().clear()
+
+	## Fraction of time there are x requests in the cluster
+	nreq__cum_time_l = list(range(max(nreq_l) + 1)) # collections.defaultdict(0)
+	for i in range(len(nreq_l) - 1):
+		nreq__cum_time_l[nreq_l[i]] += epoch_l[i + 1] - epoch_l[i]
+	nreq__frac_time_l = [t / max_time for t in nreq__cum_time_l]
+	ax = plot.gca()
+	# add_cdf(nreq_l, ax, '', next(nice_color))
+	plot.plot(list(range(len(nreq__frac_time_l))), nreq__frac_time_l, color=next(nice_color), marker='_', linestyle='None', mew=5, ms=10)
+	plot.ylabel('Fraction of time number of requests is x', fontsize=fontsize)
+	plot.xlabel('x', fontsize=fontsize)
+	plot.title('Number of servers= {}, Avg load= {}'.format(cl.num_server, round(avg_load, 2)))
+	plot.gcf().set_size_inches(6, 4)
+	plot.savefig("plot_ns{}_cdf_cluster_nreqs.png".format(NUM_SERVER), bbox_inches='tight')
 	plot.gcf().clear()
 
 	log(DEBUG, "done", cl_id=cl._id)
