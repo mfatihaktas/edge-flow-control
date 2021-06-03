@@ -37,11 +37,19 @@ class ConnReply():
 		return "ConnReply(port_server_listening= {})".format(self.port_server_listening)
 
 class Payload():
-	def __init__(self, _id, cid, size_inBs, typ):
+	def __init__(self, _id, cid, typ, size_inBs, serv_time=None):
 		self._id = _id
 		self.cid = cid
 		self.size_inBs = size_inBs
 		self.typ = typ
+		self.serv_time = serv_time
+
+		self.epoch_departed_client = None
+		self.epoch_arrived_server = None
+		self.epoch_departed_server = None
+		self.epoch_arrived_client = None
+
+		self.num_server_fair_share = None
 
 	def __hash__(self):
 		return hash((self._id, self.cid))
@@ -59,38 +67,25 @@ class Payload():
 		return self.typ == 'p'
 
 class Job(Payload):
-	def __init__(self, _id, cid, serv_time, size_inBs):
-		super().__init__(_id, cid, size_inBs, typ='j')
-		self.serv_time = serv_time
-
-		self.gen_epoch = None
-		self.reached_server_epoch = None
+	def __init__(self, _id, cid, size_inBs, serv_time):
+		super().__init__(_id, cid, 'j', size_inBs, serv_time)
 
 	def __repr__(self):
-		return "Job(id= {}, cid= {}, serv_time= {}, size_inBs= {})".format(self._id, self.cid, self.serv_time, self.size_inBs)
+		return "Job(id= {}, cid= {}, size_inBs= {}, serv_time= {})".format(self._id, self.cid, self.size_inBs, self.serv_time)
 
 class Result(Payload):
 	def __init__(self, _id, cid, size_inBs=0):
-		super().__init__(_id, cid, size_inBs, typ='r')
-
-		self.gen_epoch = None
-		self.reached_server_epoch = None
-
-		self.departed_server_epoch = None
-		self.serv_time = None
+		super().__init__(_id, cid, 'r', size_inBs)
 
 	def __repr__(self):
 		return "Result(id= {}, cid= {}, size_inBs= {})".format(self._id, self.cid, self.size_inBs)
 
-class Probe(Payload):
-	def __init__(self, _id, cid):
-		super().__init__(_id, cid, typ='p', size_inBs=0)
+def result_from_job(j):
+	r = Result(j._id, j.cid)
 
-	def __repr__(self):
-		return "Probe(id= {}, cid= {}, size_inBs= {})".format(self._id, self.cid, self.size_inBs)
-
-def result_from_job(job):
-	r = Result(job._id, job.cid)
-	r.gen_epoch = job.gen_epoch
-	r.reached_server_epoch = job.reached_server_epoch
+	r.serv_time = j.serv_time
+	r.epoch_departed_client = j.epoch_departed_client
+	r.epoch_arrived_server = j.epoch_arrived_server
+	r.epoch_departed_server = j.epoch_departed_server
+	r.epoch_arrived_client = j.epoch_arrived_client
 	return r

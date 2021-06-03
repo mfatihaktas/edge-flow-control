@@ -42,19 +42,19 @@ class Server():
 		self.fc_server.reg(cid)
 
 		payload = msg.payload
-		check(payload.is_job() or payload.is_probe(), "Msg should contain a job or probe.")
+		check(payload.is_job(), "Msg should contain a job")
 		self.put(payload)
 
 	# TODO: Move from condition to blocking queue
 	def put(self, job):
 		log(DEBUG, "recved", job=job)
 
-		job.reached_server_epoch = time.time()
+		job.epoch_arrived_server = time.time()
 		self.fc_server.push(job)
 		if self.is_waiting_for_ajob:
 			with self.wait_for_ajob:
 				self.wait_for_ajob.notifyAll()
-				log(DEBUG, "notified.")
+				log(DEBUG, "notified")
 
 	def run(self):
 		while True:
@@ -66,24 +66,23 @@ class Server():
 					self.wait_for_ajob.wait()
 					log(DEBUG, "a job has arrived!")
 					self.is_waiting_for_ajob = False
-				continue
 
-			if job.is_job():
-				wip = self.wip_q.get(block=True)
-				self.commer.send_job_to_worker(wip, job)
-			elif job.is_probe():
-				msg = Msg(job._id, payload=job) # return the probe back to the client
-				self.commer.send_msg(job.cid, msg)
+				job = self.fc_server.pop()
+				check(job is not None, "A job must have arrived")
+
+			wip = self.wip_q.get(block=True)
+			self.commer.send_job_to_worker(wip, job)
 
 	def handle_result(self, wip, result):
-		log(DEBUG, "started;", wip=wip, result_id=result._id)
+		log(DEBUG, "started", wip=wip, result_id=result._id)
 		self.wip_q.put(wip)
 
-		result.serv_time = time.time() - result.reached_server_epoch
-		result.departed_server_epoch = time.time()
+		result.num_server_fair_share = len(self.fc_server.cid_q_m)
+		result.serv_time = time.time() - result.epoch_arrived_server
+		result.epoch_departed_server = time.time()
 		self.commer.send_msg(result.cid, msg=Msg(_id=result._id, payload=result))
 
-		log(DEBUG, "done.", wip=wip, result_id=result._id, serv_time=result.serv_time)
+		log(DEBUG, "done", wip=wip, result_id=result._id, serv_time=result.serv_time)
 
 def parse_argv(argv):
 	m = {}

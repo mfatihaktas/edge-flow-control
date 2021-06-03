@@ -28,7 +28,7 @@ class Client():
 		self.num_jobs_gened = 0
 		self.num_jobs_finished = 0
 
-		self.job_info_m = {}
+		self.job_finished_l = []
 		self.last_time_result_recved = time.time()
 		self.inter_result_time_l = []
 
@@ -58,89 +58,82 @@ class Client():
 		log(DEBUG, "done.")
 
 	def handle_msg(self, msg):
-		log(DEBUG, "handling", msg=msg)
+		log(DEBUG, "started", msg=msg)
 
-		payload = msg.payload
-		check(payload.is_result() or payload.is_probe(), "Msg should contain a result or probe.")
+		result = msg.payload
+		check(result.is_result(), "Msg should contain a result.")
 
 		sid = msg.src_id
 		t = time.time()
+		result.epoch_arrived_client = t
 
-		self.job_info_m[payload].update(
-			{
-				'fate': 'finished',
-				'sid': sid,
-				'T': 1000*(t - payload.gen_epoch)
-			})
+		self.job_finished_l.append(result)
+
 		log(DEBUG, "",
-				turnaround_time=(t - payload.gen_epoch),
-				time_from_c_to_s=(payload.reached_server_epoch - payload.gen_epoch),
-				time_from_s_to_c=(t - payload.departed_server_epoch),
-				time_from_s_to_w_to_s=(payload.departed_server_epoch - payload.reached_server_epoch),
-				result=payload)
+				response_time = (result.epoch_arrived_client - result.epoch_departed_client),
+				time_from_c_to_s = (result.epoch_arrived_server - result.epoch_departed_client),
+				time_from_s_to_c = (result.epoch_arrived_client - result.epoch_departed_server),
+				time_from_s_to_w_to_s = result.serv_time,
+				num_server_fair_share = result.num_server_fair_share,
+				result=result)
 
-		# self.fc_client.update_delay_controller(sid, t)
-		self.fc_client.update_delay_controller(sid, payload.serv_time)
+		self.fc_client.update(sid, result)
 
-		inter_result_time = 1000*(t - self.last_time_result_recved)
-		log(DEBUG, "", inter_result_time=inter_result_time, job_serv_time=payload.serv_time)
+		inter_result_time = t - self.last_time_result_recved
 		self.inter_result_time_l.append(inter_result_time)
 		self.last_time_result_recved = t
+		log(DEBUG, "", inter_result_time=inter_result_time, job_serv_time=result.serv_time)
 
 		self.num_jobs_finished += 1
 		log(DEBUG, "", num_jobs_gened=self.num_jobs_gened, num_jobs_finished=self.num_jobs_finished)
 
+		log(DEBUG, "done", msg_id=msg._id)
 		if self.num_jobs_finished >= self.num_jobs_to_finish:
 			self.close()
 
 	def run(self):
 		while self.on:
+			log(DEBUG, "Waiting for sid")
 			sid = self.sid_q.get(block=True)
 			if sid == -1:
-				log(DEBUG, "Recved close signal.")
+				log(DEBUG, "Recved close signal")
 				return
 
 			self.num_jobs_gened += 1
 			job = Job(_id = self.num_jobs_gened,
 								cid = self._id,
-								serv_time = self.serv_time_rv.sample(),
-								size_inBs = int(self.size_inBs_rv.sample()))
-			job.gen_epoch = time.time()
-			self.job_info_m[job] = {}
+								size_inBs = int(self.size_inBs_rv.sample()),
+								serv_time = self.serv_time_rv.sample())
+			job.epoch_departed_client = time.time()
 
 			msg = Msg(_id=self.num_jobs_gened, payload=job)
 			self.commer.send_msg(sid, msg)
 			log(DEBUG, "sent", job=job, sid=sid)
-		log(DEBUG, "done.")
+
+		log(DEBUG, "done")
 
 	def summarize_job_info(self):
 		sid__T_l_m = {sid: [] for sid in self.sid_ip_m}
-		for job, info in self.job_info_m.items():
-			if 'fate' not in info:
+		for job in self.job_finished_l:
+			T = 1000*(job.epoch_arrived_client - job.epoch_departed_client)
+			if T < 0:
+				log(WARNING, "Negative response time!", job=job, T=T)
 				continue
 
-			fate = info['fate']
-			if fate == 'finished':
-				T = info['T']
-				if T < 0:
-					log(WARNING, "Negative turnaround time", job=job, T=T)
-					continue
-
-				sid__T_l_m[info['sid']].append(T)
+			sid__T_l_m[info['sid']].append(T)
 
 		fontsize = 14
-		# CDF of job turnaround times
+		## CDF of response times
 		ax = plot.gca()
 		for sid, T_l in sid__T_l_m.items():
 			add_cdf(T_l, ax, sid, next(nice_color)) # drawline_x_l=[1000*self.max_delay]
 		plot.xscale('log')
 		plot.xticks(rotation=70)
-		plot.ylabel('CDF', fontsize=fontsize)
-		plot.xlabel('Turnaround time (msec)', fontsize=fontsize)
-		# plot.title('f_dropped= {}'.format(f_dropped), fontsize=fontsize)
+		plot.ylabel('Pr{Response time < x}', fontsize=fontsize)
+		plot.xlabel('x (msec)', fontsize=fontsize)
 		plot.legend(fontsize=fontsize)
 		plot.gcf().set_size_inches(6, 4)
-		plot.savefig("plot_cdf_T_{}.png".format(self._id), bbox_inches='tight')
+		plot.savefig("plot_{}_cdf_T.png".format(self._id), bbox_inches='tight')
 		plot.gcf().clear()
 
 		# CDF of inter result times
@@ -148,11 +141,11 @@ class Client():
 		add_cdf(self.inter_result_time_l, ax, '', next(nice_color)) # drawline_x_l=[1000*self.inter_job_gen_time_rv.mean()]
 		plot.xscale('log')
 		plot.xticks(rotation=70)
-		plot.ylabel('CDF', fontsize=fontsize)
-		plot.xlabel('Inter result arrival time (msec)', fontsize=fontsize)
+		plot.ylabel('Pr{Inter result arrival time < x}', fontsize=fontsize)
+		plot.xlabel('x (msec)', fontsize=fontsize)
 		plot.legend(fontsize=fontsize)
 		plot.gcf().set_size_inches(6, 4)
-		plot.savefig("plot_cdf_interResultTime_{}.png".format(self._id), bbox_inches='tight')
+		plot.savefig("plot_{}_cdf_interResultTime.png".format(self._id), bbox_inches='tight')
 
 		log(DEBUG, "done.")
 
@@ -204,7 +197,7 @@ def test(argv):
 	c = Client(_id, sid_ip_m=m['sid_ip_m'], # {'s0': '10.0.1.0'},
 						 num_jobs_to_finish=100, # 200
 						 serv_time_rv=DiscreteRV(p_l=[1], v_l=[ES*1000], norm_factor=1000), # Exp(mu), # TPareto_forAGivenMean(l=ES/2, a=1, mean=ES)
-						 size_inBs_rv=DiscreteRV(p_l=[1], v_l=[PACKET_SIZE*10]))
+						 size_inBs_rv=DiscreteRV(p_l=[1], v_l=[PACKET_SIZE*1]))
 
 	# input("Enter to summarize job info...\n")
 	# time.sleep(3)

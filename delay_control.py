@@ -1,8 +1,8 @@
-import threading, time
+import threading, time, queue, collections
 
 from debug_utils import *
 
-class AIMDController():
+class InterJobGenTimeController_ExpAvg_AIMD():
 	def __init__(self, _id, max_delay, fc_client):
 		self._id = _id
 		self.max_delay = max_delay
@@ -49,7 +49,7 @@ class AIMDController():
 		self.q_len += 1
 		self.q_len_max = max(self.q_len_max, self.q_len)
 
-class InterJobGenTimeController():
+class InterJobGenTimeController_ExpAvg():
 	def __init__(self, _id, fc_client_sid_q):
 		self._id = _id
 		self.fc_client_sid_q = fc_client_sid_q
@@ -65,9 +65,9 @@ class InterJobGenTimeController():
 		self.put()
 
 	def close(self):
-		log(DEBUG, "started;")
+		log(DEBUG, "started")
 		self.on = False
-		log(DEBUG, "done.")
+		log(DEBUG, "done")
 
 	def run(self):
 		while self.on:
@@ -80,7 +80,7 @@ class InterJobGenTimeController():
 				self.put()
 
 	def update_w_result(self, job_serv_time):
-		log(DEBUG, "started;", job_serv_time=job_serv_time)
+		log(DEBUG, "started", job_serv_time=job_serv_time)
 		self.num_jobs_on_fly -= 1
 
 		if self.inter_serv_time is None:
@@ -88,8 +88,63 @@ class InterJobGenTimeController():
 		else:
 			self.inter_serv_time = self.a*job_serv_time + (1 - self.a)*self.inter_serv_time
 
-		log(DEBUG, "done.", inter_serv_time=self.inter_serv_time, num_jobs_on_fly=self.num_jobs_on_fly)
+		log(DEBUG, "done", inter_serv_time=self.inter_serv_time, num_jobs_on_fly=self.num_jobs_on_fly)
 
 	def put(self):
 		self.num_jobs_on_fly += 1
 		self.fc_client_sid_q.put(self._id)
+
+class InterJobGenTimeController_GGn():
+	def __init__(self, sid, fc_client_sid_q, avg_load_target):
+		self.sid = sid
+		self.fc_client_sid_q = fc_client_sid_q
+		self.avg_load_target = avg_load_target
+
+		self.inter_req_time = None
+
+		self.result_q = collections.deque(maxlen=100)
+		self.cum_serv_time = 0
+
+		self.on = True
+		self.syncer = queue.Queue()
+		t = threading.Thread(target=self.run, daemon=True)
+		t.start()
+
+	def __repr__(self):
+		return "InterJobGenTimeController_GGn(sid= {}, avg_load_target= {})".format(self.sid, self.avg_load_target)
+
+	def close(self):
+		log(DEBUG, "started")
+		self.on = False
+		log(DEBUG, "done")
+
+	def update(self, result):
+		log(DEBUG, "started", inter_req_time=self.inter_req_time, serv_time=result.serv_time)
+
+		self.cum_serv_time += result.serv_time
+		if len(self.result_q) == self.result_q.maxlen:
+			self.cum_serv_time -= self.result_q[0].serv_time
+		self.result_q.append(result)
+
+		should_sync = self.inter_req_time is None
+		self.inter_req_time = self.cum_serv_time / len(self.result_q) / result.num_server_fair_share / self.avg_load_target
+
+		if should_sync:
+			log(DEBUG, "recved first result")
+			self.syncer.put(1)
+
+		log(DEBUG, "done", inter_req_time=self.inter_req_time)
+
+	def run(self):
+		log(DEBUG, "started", what=self)
+		while self.on:
+			if self.inter_req_time is None:
+				log(DEBUG, "putting first sid", sid=self.sid)
+				self.fc_client_sid_q.put(self.sid)
+				log(DEBUG, "waiting for first result", sid=self.sid)
+				self.syncer.get(block=True)
+				self.fc_client_sid_q.put(self.sid)
+			else:
+				log(DEBUG, "waiting", inter_req_time=self.inter_req_time, sid=self.sid)
+				time.sleep(self.inter_req_time)
+				self.fc_client_sid_q.put(self.sid)

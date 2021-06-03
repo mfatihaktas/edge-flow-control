@@ -32,40 +32,47 @@ class FlowControlServer():
 		return None
 
 class FlowControlClient():
-	def __init__(self, _id, client_sid_q):
+	def __init__(self, _id, client_sid_q, avg_load_target=0.8):
 		self._id = _id
 		self.client_sid_q = client_sid_q
+		self.avg_load_target = avg_load_target
 
-		self.sid__delay_controller_m = {}
+		self.sid_controller_m = {}
 		self.sid_q = queue.Queue()
 
 		t = threading.Thread(target=self.run, daemon=True)
 		t.start()
 
+	def __repr__(self):
+		return "FlowControlClient(id= {})".format(self._id)
+
 	def close(self):
 		log(DEBUG, "started;")
 		self.sid_q.put(-1)
-		for _, dc in self.sid__delay_controller_m.items():
+		for _, dc in self.sid_controller_m.items():
 			dc.close()
 		log(DEBUG, "done.")
 
 	def reg(self, sid, sip):
-		if sid not in self.sid__delay_controller_m:
-			self.sid__delay_controller_m[sid] = InterJobGenTimeController(sid, self.sid_q)
+		if sid not in self.sid_controller_m:
+			self.sid_controller_m[sid] = InterJobGenTimeController_GGn(sid, self.sid_q, self.avg_load_target)
+			# self.sid_controller_m[sid] = InterJobGenTimeController_ExpAvg(sid, self.sid_q)
 			log(DEBUG, "reged", sid=sid)
 		else:
 			log(WARNING, "Already reged!", sid=sid)
 
 	def run(self):
+		log(DEBUG, "started", what=self)
 		while True:
+			log(DEBUG, "waiting for sid", what=self)
 			sid = self.sid_q.get(block=True)
 
 			self.client_sid_q.put(sid)
 
 			if sid == -1:
-				log(DEBUG, "recved close signal, terminating the loop thread.")
+				log(DEBUG, "recved close signal, terminating the loop thread")
 				return
 
-	def update_delay_controller(self, sid, t):
-		self.sid__delay_controller_m[sid].update_w_result(t)
-		log(DEBUG, "done", sid=sid, t=t)
+	def update(self, sid, result):
+		self.sid_controller_m[sid].update(result)
+		log(DEBUG, "done", sid=sid)
