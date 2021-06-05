@@ -5,6 +5,7 @@ sys.path.append(parent_dir)
 
 from objs import *
 from rvs import *
+from debug_utils import *
 from plot_utils import *
 
 NUM_SERVER = 2
@@ -18,11 +19,12 @@ def plot_client(c):
 	# for sid, T_l in sid__T_l_m.items():
 	# 	add_cdf(T_l, ax, sid, next(nice_color)) # drawline_x_l=[1000*self.max_delay]
 	add_cdf(response_time_l, ax, '', next(nice_color))
+	plot.axvline(x=c.avg_resp_time_target, ymin=0, ymax=1, label='Target E[T]', color='red')
 	# plot.xscale('log')
 	plot.xticks(rotation=70)
-	plot.ylabel('Pr{Response time < x}', fontsize=fontsize)
+	plot.ylabel('Pr{T < x}', fontsize=fontsize)
 	plot.xlabel('x', fontsize=fontsize)
-	# plot.legend(fontsize=fontsize)
+	plot.legend(fontsize=fontsize)
 	plot.gcf().set_size_inches(6, 4)
 	plot.savefig("plot_{}_ns{}_cdf_T.png".format(c._id, NUM_SERVER), bbox_inches='tight')
 	plot.gcf().clear()
@@ -96,11 +98,12 @@ def plot_cluster(cl):
 
 def sim_wSingleClient():
 	serv_time_rv = DiscreteRV(p_l=[1], v_l=[1])
-	slowdown_rv = Dolly() # DiscreteRV(p_l=[0.9, 0.1], v_l=[1, 5]) # DiscreteRV(p_l=[1], v_l=[1])
+	slowdown_rv = DiscreteRV(p_l=[0.7, 0.2, 0.1], v_l=[1, 3, 6]) # DiscreteRV(p_l=[0.9, 0.1], v_l=[1, 5]) # Dolly() # DiscreteRV(p_l=[1], v_l=[1])
 
 	env = simpy.Environment()
 	cl = Cluster('cl', env, slowdown_rv, NUM_SERVER)
-	c = Client('c', env, 'cl', serv_time_rv, num_req_to_recv=1000*NUM_SERVER)
+	avg_resp_time_target = 1.6 * serv_time_rv.mean() * slowdown_rv.mean()
+	c = Client('c', env, 'cl', serv_time_rv, avg_resp_time_target, num_req_to_recv=2000*NUM_SERVER)
 	n = Net_wConstantDelay('n', env, [cl, c], delay=0.1) # 0.1 # 2*serv_time_rv.mean()
 	env.run(until=c.wait)
 	# env.run(until=10)
@@ -112,14 +115,15 @@ def sim_wSingleClient():
 
 def sim_wMultiClient(num_client):
 	serv_time_rv = DiscreteRV(p_l=[1], v_l=[1])
-	slowdown_rv = Dolly() # DiscreteRV(p_l=[1], v_l=[1]) # DiscreteRV(p_l=[0.9, 0.1], v_l=[1, 5])
+	slowdown_rv = DiscreteRV(p_l=[0.7, 0.2, 0.1], v_l=[1, 3, 6]) # Dolly() # DiscreteRV(p_l=[1], v_l=[1]) # DiscreteRV(p_l=[0.9, 0.1], v_l=[1, 5])
 
 	env = simpy.Environment()
 	cl = Cluster('cl', env, slowdown_rv, NUM_SERVER)
 	c_l = []
 	for i in range(num_client):
 		cid= 'c{}'.format(i)
-		c = Client(cid, env, 'cl', serv_time_rv, num_req_to_recv=1000*NUM_SERVER)
+		avg_resp_time_target = 1.6 * serv_time_rv.mean() * slowdown_rv.mean()
+		c = Client(cid, env, 'cl', serv_time_rv, avg_resp_time_target, num_req_to_recv=100*NUM_SERVER)
 		c_l.append(c)
 
 	n = Net_wConstantDelay('n', env, [cl, *c_l], delay=0.1)
@@ -133,5 +137,7 @@ def sim_wMultiClient(num_client):
 	log(DEBUG, "done")
 
 if __name__ == '__main__':
+	log_to_file('sim.log')
+
 	# sim_wSingleClient()
-	sim_wMultiClient(num_client=4)
+	sim_wMultiClient(num_client=2)

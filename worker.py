@@ -16,15 +16,15 @@ class Worker():
 		t.join()
 
 	def close(self):
-		log(DEBUG, "started;")
+		log(DEBUG, "started")
 		self.commer.close()
-		log(DEBUG, "done.")
+		log(DEBUG, "done")
 
 	def run(self):
 		while True:
 			job = self.job_q.get(block=True)
 			if job is None:
-				log(DEBUG, "recved close signal.")
+				log(DEBUG, "recved close signal")
 				self.close()
 				return
 

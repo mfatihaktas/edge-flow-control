@@ -16,14 +16,16 @@ class MyTopo(Topo):
 
 		s0 = self.addHost('s0')
 		w0 = self.addHost('w0')
+		w1 = self.addHost('w1')
 		c0 = self.addHost('c0')
 		c1 = self.addHost('c1')
 
 		sw0 = self.addSwitch('sw0')
 
 		cluster_link_opts = dict(bw=1000, delay='0.1ms', loss=0, max_queue_size=1000, use_htb=True)
-		edge_link_opts = dict(bw=1000, delay='10ms', loss=0, max_queue_size=1000, use_htb=True)
+		edge_link_opts = dict(bw=1000, delay='1ms', loss=0, max_queue_size=1000, use_htb=True)
 		self.addLink(w0, sw0, **cluster_link_opts)
+		self.addLink(w1, sw0, **cluster_link_opts)
 		self.addLink(s0, sw0, **cluster_link_opts)
 		self.addLink(c0, sw0, **edge_link_opts)
 		self.addLink(c1, sw0, **edge_link_opts)
@@ -46,6 +48,9 @@ if __name__ == '__main__':
 	w0 = net.getNodeByName('w0')
 	w0.setIP(ip='10.0.2.0', prefixLen=32)
 	w0.setMAC(mac='00:00:00:00:02:00')
+	w1 = net.getNodeByName('w1')
+	w1.setIP(ip='10.0.2.1', prefixLen=32)
+	w1.setMAC(mac='00:00:00:00:02:01')
 
 	c0, c1 = net.getNodeByName('c0', 'c1')
 	c0.setIP(ip='10.0.0.0', prefixLen=32)
@@ -60,6 +65,6 @@ if __name__ == '__main__':
 	c1.setDefaultRoute(intf='c1-eth0')
 
 	net.start()
-	run_workers([w0])
+	run_workers([w0, w1])
 	CLI(net)
 	net.stop()

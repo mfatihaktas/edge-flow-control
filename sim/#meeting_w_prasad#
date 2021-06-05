@@ -1,0 +1,33 @@
+
+General architecture:
+Load balancing is on the client side
+
+What is a cluster?
+A stateless replica-set in Kubernetes.
+i.e., a set of stateless containers running behind a Master.
+Clients connect to the Master through a persistent TCP connection.
+Master keeps a separate request queue for each connected client.
+Master assigns requests to workers (container) by doing a round-robin across the client queues. Whenever a worker becomes idle, the next busy client queue is served.
+
+
+Client-side load balancing comes in two levels
+1. We assign clients to clusters in a "balance way". Once a client boots up, it queries a DNS-like service which returns the set of master nodes (typically 3) of
+  the assigned clusters.
+
+Note: For now, I think of the processing time as the bottleneck, not the network.
+
+2. Client should push requests at a rate that does not incur "excessive" queueing delay.
+Client currently rely on a mix of precise and runtime feedback from the Master to clients.
+Precise feedback: Master is telling the client about average number of workers allocated for the client.
+Runtime feedback: Result of each request will contain the actual service time, which is the epoch from a request's arrival to the master to the epoch the corresponding result departs the master.
+
+Client will make use of the feedback to regulate its request rate, i.e., inter-request generation time.
+Client will use a queueing model based control.
+
+Client -- Qeueue -- Master 1 -- Worker
+                             -- Worker
+       -- Qeueue -- Master 2 -- Worker
+
+Each queue at the Master implements G/G/n queue where n is the (average) number of workers allocated for the client.
+
+Suggestion: Instead of the model, can we simply rely on the queue length, and react on it.

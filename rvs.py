@@ -102,7 +102,7 @@ class TPareto(RV): # Truncated
 			except:
 				# x = math.log(self.l) - math.log(self.u)
 				# return self.a*self.l**k/(self.a-k) * \
-				#       (1 - math.exp((self.a-k)*x) )/(1 - math.exp(self.a*x) )
+				#				(1 - math.exp((self.a-k)*x) )/(1 - math.exp(self.a*x) )
 				r = self.l/self.u
 				log(INFO, "", r=r, a=self.a, k=k)
 				return self.a*self.l**k/(self.a-k) * \
@@ -158,30 +158,33 @@ class DiscreteRV():
 		return self.dist.rvs() / self.norm_factor
 
 class Dolly(RV):
-  ## Kristen et al. A Better Model for Job Redundancy: Decoupling Server Slowdown and Job Size
-  def __init__(self):
-    RV.__init__(self, l=1, u=12)
+	## Kristen et al. A Better Model for Job Redundancy: Decoupling Server Slowdown and Job Size
+	def __init__(self):
+		RV.__init__(self, l=1, u=12)
 
-    self.v = np.arange(1, 13)
-    self.p = [0.23, 0.14, 0.09, 0.03, 0.08, 0.1, 0.04, 0.14, 0.12, 0.021, 0.007, 0.002]
-    self.dist = scipy.stats.rv_discrete(name='dolly', values=(self.v, self.p) )
+		self.v = np.arange(1, 13)
+		self.p = [0.23, 0.14, 0.09, 0.03, 0.08, 0.1, 0.04, 0.14, 0.12, 0.021, 0.007, 0.002]
+		self.dist = scipy.stats.rv_discrete(name='dolly', values=(self.v, self.p) )
 
-  def __str__(self):
-    return "Dolly(l={}, u={})".format(self.l, self.u)
+	def __str__(self):
+		return "Dolly(l={}, u={})".format(self.l, self.u)
 
-  def pdf(self, x):
-    return self.dist.pmf(x) if (x >= self.l_l and x <= self.u_l) else 0
+	def mean(self):
+		return self.dist.mean()
 
-  def cdf(self, x):
-    if x < self.l_l:
-      return 0
-    elif x > self.u_l:
-      return 1
-    return float(self.dist.cdf(x) )
+	def pdf(self, x):
+		return self.dist.pmf(x) if (x >= self.l_l and x <= self.u_l) else 0
 
-  def sample(self):
-    # u = random.uniform(0, 1)
-    return self.dist.rvs() # + u/100
+	def cdf(self, x):
+		if x < self.l_l:
+			return 0
+		elif x > self.u_l:
+			return 1
+		return float(self.dist.cdf(x) )
+
+	def sample(self):
+		# u = random.uniform(0, 1)
+		return self.dist.rvs() # + u/100
 
 class SumOfRVs(RV):
 	def __init__(self, rv_l):
@@ -295,6 +298,10 @@ def CoeffVar(X, a=None, b=None):
 
 if __name__ == '__main__':
 	# test_moment()
-	rv = DiscreteRV(p_l=[1], v_l=[0.023])
-	s = rv.sample()
-	log(DEBUG, "", s=s, rv=rv)
+
+	# rv = DiscreteRV(p_l=[1], v_l=[0.023])
+	# s = rv.sample()
+	# log(DEBUG, "", s=s, rv=rv)
+
+	dolly = Dolly()
+	log(DEBUG, "", dolly_mean=dolly.mean())

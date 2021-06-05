@@ -1,3 +1,3 @@
 
-TEST = False # True
+TEST = True # False
 TRANS = 'TCP' # 'UDP'

@@ -18,22 +18,24 @@ class Request():
 		self.epoch_departed_cluster = None
 		self.epoch_arrived_client = None
 
-		self.num_server_fair_share = None
+		self.num_server_share = None
 
 	def __repr__(self):
 		return "Request(id= {}, src_id= {}, dst_id= {}, serv_time= {})".format(self._id, self.src_id, self.dst_id, self.serv_time)
 
 class Client():
-	def __init__(self, _id, env, cl_id, serv_time_rv, num_req_to_recv, out=None):
+	def __init__(self, _id, env, cl_id, serv_time_rv, avg_resp_time_target, num_req_to_recv, out=None):
 		self._id = _id
 		self.env = env
 		self.cl_id = cl_id
 		self.serv_time_rv = serv_time_rv
+		self.avg_resp_time_target = avg_resp_time_target
 		self.num_req_to_recv = num_req_to_recv
 		self.out = out
 
 		self.token_s = simpy.Store(env)
-		self.fc = FlowControl_GGn(env, self.token_s, avg_load_target=0.8)
+		# self.fc = FlowControl_GGn(env, self.token_s, avg_load_target=0.8)
+		self.fc = FlowControl_GGn_AvgRespTimeTarget(env, self.token_s, avg_resp_time_target)
 
 		self.result_s = simpy.Store(env)
 		self.wait = env.process(self.run_recv())
@@ -47,7 +49,7 @@ class Client():
 		self.result_l = []
 
 	def __repr__(self):
-		return "Client(_id= {})".format(self._id)
+		return "Client(id= {})".format(self._id)
 
 	def put(self, req):
 		slog(DEBUG, self.env, self, "recved", req=req)
@@ -202,7 +204,7 @@ class Cluster():
 			result = yield self.result_s.get()
 			result.src_id, result.dst_id = result.dst_id, result.src_id
 			result.epoch_departed_cluster = self.env.now
-			result.num_server_fair_share = self.num_server / len(self.cid_q_m)
+			result.num_server_share = self.num_server / len(self.cid_q_m)
 			self.out.put(result)
 
 			self.record_num_reqs()

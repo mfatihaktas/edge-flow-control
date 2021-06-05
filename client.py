@@ -8,9 +8,7 @@ from commer import PACKET_SIZE, CommerOnClient
 from flow_control import FlowControlClient
 
 class Client():
-	def __init__(self, _id, sid_ip_m,
-							 num_jobs_to_finish,
-							 serv_time_rv, size_inBs_rv):
+	def __init__(self, _id, sid_ip_m, num_jobs_to_finish, serv_time_rv, size_inBs_rv, avg_load_target):
 		self._id = _id
 		self.sid_ip_m = sid_ip_m
 		self.num_jobs_to_finish = num_jobs_to_finish
@@ -20,7 +18,7 @@ class Client():
 		self.commer = CommerOnClient(_id, self.handle_msg)
 
 		self.sid_q = queue.Queue()
-		self.fc_client = FlowControlClient(_id, self.sid_q)
+		self.fc_client = FlowControlClient(_id, self.sid_q, avg_load_target)
 		for sid, sip in sid_ip_m.items():
 			self.commer.reg(sid, sip)
 			self.fc_client.reg(sid, sip)
@@ -176,7 +174,8 @@ def run(argv):
 	c = Client(_id, sid_ip_m=m['sid_ip_m'],
 						 num_jobs_to_finish=100,
 						 serv_time_rv=DiscreteRV(p_l=[1], v_l=[ES*1000], norm_factor=1000), # Exp(mu), # TPareto_forAGivenMean(l=ES/2, a=1, mean=ES)
-						 size_inBs_rv=DiscreteRV(p_l=[1], v_l=[1]))
+						 size_inBs_rv=DiscreteRV(p_l=[1], v_l=[1]),
+						 avg_load_target=0.8)
 
 	time.sleep(3)
 	log(DEBUG, "", client=c)
@@ -197,7 +196,8 @@ def test(argv):
 	c = Client(_id, sid_ip_m=m['sid_ip_m'], # {'s0': '10.0.1.0'},
 						 num_jobs_to_finish=100, # 200
 						 serv_time_rv=DiscreteRV(p_l=[1], v_l=[ES*1000], norm_factor=1000), # Exp(mu), # TPareto_forAGivenMean(l=ES/2, a=1, mean=ES)
-						 size_inBs_rv=DiscreteRV(p_l=[1], v_l=[PACKET_SIZE*1]))
+						 size_inBs_rv=DiscreteRV(p_l=[1], v_l=[PACKET_SIZE*1]),
+						 avg_load_target=0.8)
 
 	# input("Enter to summarize job info...\n")
 	# time.sleep(3)

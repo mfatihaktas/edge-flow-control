@@ -70,3 +70,7 @@ def check(condition: bool, _msg_: str, **kwargs):
 def assert_(_msg_: str, **kwargs):
 	logger.error("{}\n{}".format(_msg_, pstr(**kwargs)), extra=get_extra())
 	raise AssertionError()
+
+# ###############################  Sim log  ############################### #
+def slog(level: int, env, caller: str, msg: str, **kwargs):
+	level_log_m[level]("t: {:.2f}] {}: {}\n{}".format(env.now, caller, msg, pstr(**kwargs)), extra=get_extra())
