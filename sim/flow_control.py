@@ -101,6 +101,7 @@ class FlowControl_GGn_AvgRespTimeTarget(FlowControl):
 		self.syncer = simpy.Store(env)
 		self.inter_req_time = None
 
+		self.inter_req_time_q = deque(maxlen=10)
 		self.result_q = deque(maxlen=100)
 		self.cum_serv_time = 0
 		self.cum_serv_time_sqr = 0
@@ -134,6 +135,9 @@ class FlowControl_GGn_AvgRespTimeTarget(FlowControl):
 				self.inter_req_time = None
 			else:
 				self.inter_req_time = 1 / ar_DGc_forGivenET(ES, ES2, result.num_server_share, self.avg_resp_time_target)
+				# EX = sum(self.inter_req_time_q) / len(self.inter_req_time_q)
+				# EX2 = sum(t**2 for t in self.inter_req_time_q) / len(self.inter_req_time_q)
+				# self.inter_req_time = 1 / ar_GGc_forGivenET(EX, EX2, ES, ES2, result.num_server_share, self.avg_resp_time_target)
 
 				self.avg_resp_time = self.avg_resp_time * 0.8 + (result.epoch_departed_cluster - result.epoch_arrived_cluster) * 0.2
 
@@ -160,6 +164,7 @@ class FlowControl_GGn_AvgRespTimeTarget(FlowControl):
 	def run(self):
 		## First req
 		self.token_s.put(1)
+		last_time_req_sent = self.env.now
 		while True:
 			if self.inter_req_time is None:
 				slog(DEBUG, self.env, self, "waiting for result")
@@ -169,3 +174,6 @@ class FlowControl_GGn_AvgRespTimeTarget(FlowControl):
 				slog(DEBUG, self.env, self, "sleeping", inter_req_time=self.inter_req_time)
 				yield self.env.timeout(self.inter_req_time)
 				self.token_s.put(1)
+
+			self.inter_req_time_q.append(self.env.now - last_time_req_sent)
+			last_time_req_sent = self.env.now

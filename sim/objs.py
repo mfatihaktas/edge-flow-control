@@ -81,7 +81,7 @@ class Client():
 			self.out.put(req)
 			self.num_req_sent += 1
 
-class Server():
+class Worker():
 	def __init__(self, _id, env, slowdown_rv, out=None):
 		self._id = _id
 		self.env = env
@@ -93,7 +93,7 @@ class Server():
 		self.is_serving = False
 
 	def __repr__(self):
-		return "Server(_id= {})".format(self._id)
+		return "Worker(_id= {})".format(self._id)
 
 	def put(self, req):
 		slog(DEBUG, self.env, self, "recved", req=req)
@@ -127,7 +127,7 @@ class Cluster():
 
 		self.cid_q_m = {}
 		self.next_cid_to_pop_q = deque()
-		self.server_l = [Server(i, env, slowdown_rv, out=self) for i in range(num_server)]
+		self.server_l = [Worker(i, env, slowdown_rv, out=self) for i in range(num_server)]
 
 		self.sid_s = simpy.Store(env)
 		for i in range(num_server):
