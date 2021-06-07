@@ -32,7 +32,7 @@ def EW_MMc_wGamma(ar, ES, c):
 	return Prqing/(c/ES - ar) #, Prqing
 
 def EW_MMc(ar, ES, c):
-	if c == int(c):
+	if c != int(c):
 		return EW_MMc_wGamma(ar, ES, c)
 	else:
 		ro = ar*ES/c
@@ -102,7 +102,7 @@ def binary_search(l, target, get_value):
 	r = l + 0.01
 	while True:
 		# if r < 0.00001 or r > 1000:
-		# 	break
+		#		break
 
 		val = get_value(r)
 		log(DEBUG, "", val=val, r=r)

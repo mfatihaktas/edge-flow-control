@@ -8,7 +8,7 @@ from rvs import *
 from debug_utils import *
 from plot_utils import *
 
-NUM_SERVER = 2
+NUM_SERVER = 10
 
 def plot_client(c):
 	fontsize = 14
@@ -17,7 +17,7 @@ def plot_client(c):
 	response_time_l = [r.epoch_arrived_client - r.epoch_departed_client for r in c.result_l]
 	ax = plot.gca()
 	# for sid, T_l in sid__T_l_m.items():
-	# 	add_cdf(T_l, ax, sid, next(nice_color)) # drawline_x_l=[1000*self.max_delay]
+	#		add_cdf(T_l, ax, sid, next(nice_color)) # drawline_x_l=[1000*self.max_delay]
 	add_cdf(response_time_l, ax, '', next(nice_color))
 	plot.axvline(x=c.avg_resp_time_target, ymin=0, ymax=1, label='Target E[T]', color='red')
 	# plot.xscale('log')
@@ -115,14 +115,14 @@ def sim_wSingleClient():
 
 def sim_wMultiClient(num_client):
 	serv_time_rv = DiscreteRV(p_l=[1], v_l=[1])
-	slowdown_rv = DiscreteRV(p_l=[0.7, 0.2, 0.1], v_l=[1, 3, 6]) # Dolly() # DiscreteRV(p_l=[1], v_l=[1]) # DiscreteRV(p_l=[0.9, 0.1], v_l=[1, 5])
+	slowdown_rv = Dolly() # DiscreteRV(p_l=[0.7, 0.2, 0.1], v_l=[1, 3, 6]) # DiscreteRV(p_l=[1], v_l=[1]) # DiscreteRV(p_l=[0.9, 0.1], v_l=[1, 5])
 
 	env = simpy.Environment()
 	cl = Cluster('cl', env, slowdown_rv, NUM_SERVER)
 	c_l = []
 	for i in range(num_client):
 		cid= 'c{}'.format(i)
-		avg_resp_time_target = 1.6 * serv_time_rv.mean() * slowdown_rv.mean()
+		avg_resp_time_target = 2 * serv_time_rv.mean() * slowdown_rv.mean()
 		c = Client(cid, env, 'cl', serv_time_rv, avg_resp_time_target, num_req_to_recv=1000*NUM_SERVER)
 		c_l.append(c)
 
@@ -140,4 +140,4 @@ if __name__ == '__main__':
 	log_to_file('sim.log')
 
 	# sim_wSingleClient()
-	sim_wMultiClient(num_client=2)
+	sim_wMultiClient(num_client=40)

@@ -30,7 +30,7 @@ level_log_m = {INFO: logger.info, DEBUG: logger.debug, WARNING: logger.warning, 
 def log_to_file(filename):
 	logger = logging.getLogger('edge_cloud')
 	# for hdlr in logger.handlers[:]: # remove all old handlers
-	# 	logger.removeHandler(hdlr)
+	#		logger.removeHandler(hdlr)
 
 	fh = logging.FileHandler(filename, mode='w')
 	fh.setLevel(logging.DEBUG)
@@ -41,11 +41,11 @@ def get_extra():
 	# caller_list = []
 	# frame = inspect.currentframe().f_back
 	# while frame.f_back:
-	# 	caller_list.append('{0}'.format(frame.f_code.co_name))
-	# 	frame = frame.f_back
+	#		caller_list.append('{0}'.format(frame.f_code.co_name))
+	#		frame = frame.f_back
 	# callers =	 '/'.join(reversed(caller_list))
 
-  # return {'func_name': '{0}'.format((inspect.currentframe().f_back.f_back).f_code.co_name)}
+	# return {'func_name': '{0}'.format((inspect.currentframe().f_back.f_back).f_code.co_name)}
 	frame = inspect.currentframe().f_back.f_back.f_code
 	return {'func_name': '{}::{}'.format(os.path.split(frame.co_filename)[1], frame.co_name)}
 

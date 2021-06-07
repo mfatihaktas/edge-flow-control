@@ -1,6 +1,6 @@
 import simpy
 from collections import deque
-from simple_pid import PID
+# from simple_pid import PID
 
 from debug_utils import *
 from model import *
@@ -107,8 +107,8 @@ class FlowControl_GGn_AvgRespTimeTarget(FlowControl):
 		self.cum_serv_time_sqr = 0
 		self.avg_resp_time = 0
 
-		self.pid = PID(1, 0.1, 0.05, setpoint=avg_resp_time_target)
-		self.pid.output_limits = (0.1, 10)
+		# self.pid = PID(1, 0.1, 0.05, setpoint=avg_resp_time_target)
+		# self.pid.output_limits = (0.1, 10)
 
 		self.action = env.process(self.run())
 
