@@ -187,15 +187,18 @@ class Cluster():
 
 			req = self.next_req()
 			if req is None:
-				# slog(DEBUG, self.env, self, "waiting for a req")
-				# self.waiting_for_req = True
-				# yield self.syncer_s.get()
-				# self.waiting_for_req = False
-				# slog(DEBUG, self.env, self, "recved a req")
-				# req = self.next_req()
-				# check(req is not None, "A req must have been recved")
-				yield self.env.timeout(0.01)
-				continue
+				slog(DEBUG, self.env, self, "waiting for a req")
+				self.waiting_for_req = True
+				yield self.syncer_s.get()
+				self.waiting_for_req = False
+				slog(DEBUG, self.env, self, "recved a req")
+				req = self.next_req()
+				check(req is not None, "A req must have been recved")
+
+			# req = self.next_req()
+			# while req is None:
+			# 	yield self.env.timeout(0.01)
+			# 	req = self.next_req()
 
 			self.server_l[sid].put(req)
 			self.record_num_reqs()

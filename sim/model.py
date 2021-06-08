@@ -3,20 +3,8 @@ current_dir = os.path.dirname(os.path.realpath(__file__))
 parent_dir = os.path.dirname(current_dir)
 sys.path.append(parent_dir)
 
-import scipy, math
-from scipy import special
-
+from math_utils import *
 from debug_utils import *
-
-def G(z, x=None, type_=None):
-	if x is None:
-		return scipy.special.gamma(z)
-	else:
-		if type_ == 'lower':
-			return float(scipy.special.gammainc(z, x)*G(z) )
-		elif type_ == 'upper':
-			# return (1 - scipy.special.gammainc(z, x) )*G(z)
-			return float(scipy.special.gammaincc(z, x)*G(z) )
 
 # def EW_MGc(ar, ES, ES2, c):
 #		CV = math.sqrt(ES2 - ES**2)/ES
@@ -32,13 +20,14 @@ def EW_MMc_wGamma(ar, ES, c):
 	return Prqing/(c/ES - ar) #, Prqing
 
 def EW_MMc(ar, ES, c):
-	if c != int(c):
-		return EW_MMc_wGamma(ar, ES, c)
-	else:
-		ro = ar*ES/c
-		C = 1/(1 + (1-ro)*G(c+1)/(c*ro)**c * sum([(c*ro)**k/G(k+1) for k in range(c) ] ) )
-		# EN = ro/(1-ro)*C + c*ro
-		return C/(c/ES - ar)
+	return EW_MMc_wGamma(ar, ES, c)
+	# if c * 10 != int(c) * 10:
+	# 	return EW_MMc_wGamma(ar, ES, c)
+	# else:
+	# 	ro = ar*ES/c
+	# 	C = 1/(1 + (1-ro)*G(c+1)/(c*ro)**c * sum([(c*ro)**k/G(k+1) for k in range(c) ] ) )
+	# 	# EN = ro/(1-ro)*C + c*ro
+	# 	return C/(c/ES - ar)
 
 ## Derived from Allen-Cunneen approximation
 ## [Arnold Allen, Queueing models of computer systems]

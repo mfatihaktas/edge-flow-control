@@ -101,6 +101,7 @@ def eval_DGc_approx(num_worker, num_client):
 	log(DEBUG, "started", num_worker=num_worker, num_client=num_client)
 	ES = 1
 	serv_time_rv = Exp(mu=1/ES)
+	ES2 = serv_time_rv.moment(2)
 
 	arr_rate = lambda ro: 1/ES * num_worker / num_client * ro
 
@@ -113,7 +114,7 @@ def eval_DGc_approx(num_worker, num_client):
 		print("sim_ET= {}".format(sim_ET))
 
 		c = num_worker / num_client
-		ET = ET_DGc(ar, ES, c)
+		ET = ET_DGc(ar, ES, ES2, c)
 		print("ET= {}".format(ET))
 
 	log(DEBUG, "done")

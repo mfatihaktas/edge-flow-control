@@ -3,7 +3,9 @@ import scipy.integrate
 import scipy.stats
 import numpy as np
 
+from math_utils import *
 from debug_utils import *
+from plot_utils import *
 
 class RV(): # Random Variable
 	def __init__(self, l, u):
@@ -173,12 +175,12 @@ class Dolly(RV):
 		return self.dist.mean()
 
 	def pdf(self, x):
-		return self.dist.pmf(x) if (x >= self.l_l and x <= self.u_l) else 0
+		return self.dist.pmf(x) if (x >= self.l and x <= self.u) else 0
 
 	def cdf(self, x):
-		if x < self.l_l:
+		if x < self.l:
 			return 0
-		elif x > self.u_l:
+		elif x > self.u:
 			return 1
 		return float(self.dist.cdf(x) )
 
@@ -296,6 +298,18 @@ def CoeffVar(X, a=None, b=None):
 	StdX = math.sqrt(EX2 - EX**2)
 	return StdX / EX
 
+def plot_cdf_dolly():
+	dolly = Dolly()
+	fontsize = 14
+	log(DEBUG, "", dolly_mean=dolly.mean())
+	plot_cdf(dolly, plot.gca(), label=None, color='blue')
+	plot.ylabel('Pr{S < s}', fontsize=fontsize)
+	plot.xlabel('s', fontsize=fontsize)
+	plot.title(r'$S \sim$ Dolly')
+	plot.gcf().set_size_inches(4, 4)
+	plot.savefig("plot_cdf_dolly.pdf", bbox_inches='tight')
+	plot.gcf().clear()
+
 if __name__ == '__main__':
 	# test_moment()
 
@@ -303,5 +317,4 @@ if __name__ == '__main__':
 	# s = rv.sample()
 	# log(DEBUG, "", s=s, rv=rv)
 
-	dolly = Dolly()
-	log(DEBUG, "", dolly_mean=dolly.mean())
+	plot_cdf_dolly()

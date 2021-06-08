@@ -8,7 +8,7 @@ from rvs import *
 from debug_utils import *
 from plot_utils import *
 
-NUM_SERVER = 10
+NUM_SERVER = 4
 
 def plot_client(c):
 	fontsize = 14
@@ -98,13 +98,13 @@ def plot_cluster(cl):
 
 def sim_wSingleClient():
 	serv_time_rv = DiscreteRV(p_l=[1], v_l=[1])
-	slowdown_rv = DiscreteRV(p_l=[0.7, 0.2, 0.1], v_l=[1, 3, 6]) # DiscreteRV(p_l=[0.9, 0.1], v_l=[1, 5]) # Dolly() # DiscreteRV(p_l=[1], v_l=[1])
+	slowdown_rv = Dolly() # DiscreteRV(p_l=[0.7, 0.2, 0.1], v_l=[1, 3, 6]) # DiscreteRV(p_l=[0.9, 0.1], v_l=[1, 5]) # DiscreteRV(p_l=[1], v_l=[1])
 
 	env = simpy.Environment()
 	cl = Cluster('cl', env, slowdown_rv, NUM_SERVER)
 	avg_resp_time_target = 1.6 * serv_time_rv.mean() * slowdown_rv.mean()
-	c = Client('c', env, 'cl', serv_time_rv, avg_resp_time_target, num_req_to_recv=2000*NUM_SERVER)
-	n = Net_wConstantDelay('n', env, [cl, c], delay=0.1) # 0.1 # 2*serv_time_rv.mean()
+	c = Client('c', env, 'cl', serv_time_rv, avg_resp_time_target, num_req_to_recv=1000*NUM_SERVER)
+	n = Net_wConstantDelay('n', env, [cl, c], delay=0) # 0.1 # 2*serv_time_rv.mean()
 	env.run(until=c.wait)
 	# env.run(until=10)
 
@@ -123,7 +123,7 @@ def sim_wMultiClient(num_client):
 	for i in range(num_client):
 		cid= 'c{}'.format(i)
 		avg_resp_time_target = 2 * serv_time_rv.mean() * slowdown_rv.mean()
-		c = Client(cid, env, 'cl', serv_time_rv, avg_resp_time_target, num_req_to_recv=1000)
+		c = Client(cid, env, 'cl', serv_time_rv, avg_resp_time_target, num_req_to_recv=2000)
 		c_l.append(c)
 
 	n = Net_wConstantDelay('n', env, [cl, *c_l], delay=0.1)
@@ -139,5 +139,5 @@ def sim_wMultiClient(num_client):
 if __name__ == '__main__':
 	log_to_file('sim.log')
 
-	# sim_wSingleClient()
-	sim_wMultiClient(num_client=40)
+	sim_wSingleClient()
+	# sim_wMultiClient(num_client=40)

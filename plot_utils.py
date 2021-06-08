@@ -112,3 +112,11 @@ def colorbar(mappable):
   cbar = fig.colorbar(mappable, cax=cax)
   plot.sca(last_axes)
   return cbar
+
+def plot_cdf(rv, ax, label, color, max_=None, drawline_x_l=[]):
+	plot.sca(ax)
+	if max_ is None:
+		max_ = rv.u
+	x_l = np.linspace(rv.l, max_, 100)
+	y_l = [rv.cdf(x) for x in x_l]
+	plot.plot(x_l, y_l, label=label, color=color, marker='.', linestyle=':', lw=2, mew=2, ms=2) # lw=1, mew=1, ms=1
