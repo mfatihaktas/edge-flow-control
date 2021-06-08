@@ -33,7 +33,7 @@ class Client_NoFC(): # No Flow Control
 		return "Client_NoFC(id= {})".format(self._id)
 
 	def put(self, req):
-		slog(DEBUG, self.env, self, "recved", req=req)
+		slog(DEBUG, self.env, self, "recved result", req=req)
 		self.result_s.put(req)
 
 	def run_recv(self):
@@ -85,7 +85,7 @@ def sim(num_worker, num_client, inter_gen_time_rv, serv_time_rv):
 	cl = Cluster('cl', env, slowdown_rv, num_worker)
 	c_l = []
 	for i in range(num_client):
-		c = Client_NoFC('c{}'.format(i), env, 'cl', inter_gen_time_rv, serv_time_rv, num_req_to_recv=10000)
+		c = Client_NoFC('c{}'.format(i), env, 'cl', inter_gen_time_rv, serv_time_rv, num_req_to_recv=100)
 		c_l.append(c)
 
 	n = Net_wConstantDelay('n', env, [cl, *c_l], delay=0)
@@ -97,7 +97,7 @@ def sim(num_worker, num_client, inter_gen_time_rv, serv_time_rv):
 
 	return np.mean(avg_resp_time_l)
 
-def verify_roundrobin_implements_fair_MMc(num_worker, num_client):
+def eval_DGc_approx(num_worker, num_client):
 	log(DEBUG, "started", num_worker=num_worker, num_client=num_client)
 	ES = 1
 	serv_time_rv = Exp(mu=1/ES)
@@ -108,17 +108,16 @@ def verify_roundrobin_implements_fair_MMc(num_worker, num_client):
 	# for ro in [0.8, 0.9]:
 		print(">> ro= {}".format(ro))
 		ar = arr_rate(ro)
-		inter_gen_time_rv = Exp(mu=ar)
+		inter_gen_time_rv = DiscreteRV(p_l=[1], v_l=[1/ar]) # Exp(mu=ar)
 		sim_ET = sim(num_worker, num_client, inter_gen_time_rv, serv_time_rv)
 		print("sim_ET= {}".format(sim_ET))
 
 		c = num_worker / num_client
-		EW = EW_MMc(ar, ES, int(c)) if num_worker % num_client == 0 else EW_MMc_wGamma(ar, ES, c)
-		ET = ES + EW
+		ET = ET_DGc(ar, ES, c)
 		print("ET= {}".format(ET))
 
 	log(DEBUG, "done")
 
 if __name__ == '__main__':
 	num_worker, num_client = 2, 2
-	verify_roundrobin_implements_fair_MMc(num_worker, num_client)
+	eval_DGc_approx(num_worker, num_client)

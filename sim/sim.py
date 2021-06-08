@@ -123,7 +123,7 @@ def sim_wMultiClient(num_client):
 	for i in range(num_client):
 		cid= 'c{}'.format(i)
 		avg_resp_time_target = 2 * serv_time_rv.mean() * slowdown_rv.mean()
-		c = Client(cid, env, 'cl', serv_time_rv, avg_resp_time_target, num_req_to_recv=1000*NUM_SERVER)
+		c = Client(cid, env, 'cl', serv_time_rv, avg_resp_time_target, num_req_to_recv=1000)
 		c_l.append(c)
 
 	n = Net_wConstantDelay('n', env, [cl, *c_l], delay=0.1)

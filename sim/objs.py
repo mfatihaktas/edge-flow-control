@@ -165,9 +165,8 @@ class Cluster():
 			self.reg(req.src_id)
 		self.cid_q_m[req.src_id].append(req)
 
-		if self.waiting_for_req:
+		if self.waiting_for_req: # and len(self.syncer_s.items) == 0:
 			self.syncer_s.put(1)
-			# yield self.env.timeout(0.0001)
 
 	def put_result(self, sid, result):
 		slog(DEBUG, self.env, self, "recved", result=result)
@@ -188,13 +187,15 @@ class Cluster():
 
 			req = self.next_req()
 			if req is None:
-				slog(DEBUG, self.env, self, "waiting for a req")
-				self.waiting_for_req = True
-				yield self.syncer_s.get()
-				self.waiting_for_req = False
-				slog(DEBUG, self.env, self, "recved a req")
-				req = self.next_req()
-				check(req is not None, "A req must have been recved")
+				# slog(DEBUG, self.env, self, "waiting for a req")
+				# self.waiting_for_req = True
+				# yield self.syncer_s.get()
+				# self.waiting_for_req = False
+				# slog(DEBUG, self.env, self, "recved a req")
+				# req = self.next_req()
+				# check(req is not None, "A req must have been recved")
+				yield self.env.timeout(0.01)
+				continue
 
 			self.server_l[sid].put(req)
 			self.record_num_reqs()
